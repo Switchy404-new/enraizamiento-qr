@@ -53,6 +53,7 @@ nav button svg{width:23px; height:23px;}
 .persona-item .info{flex:1;}
 .persona-item .info .n{font-weight:600; font-size:15px;}
 .persona-item .info .c{font-size:12px; color:var(--texto2);}
+.inp-copias{width:56px; padding:8px 4px; text-align:center; flex-shrink:0;}
 /* Dashboard */
 .kpis{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;}
 .kpi{background:#fff; border-radius:var(--radius); padding:14px; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.08);}
@@ -140,9 +141,16 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
   </div>
   <div class="card">
     <h2>Personas registradas (<span id="cnt-personas">0</span>)</h2>
+    <div style="font-size:12px; color:var(--texto2); margin-bottom:6px;">La casilla numérica es cuántos stickers se imprimen de esa persona (0 = no imprimir).</div>
     <div id="lista-personas"></div>
     <div class="fila-botones">
-      <button class="btn-s" onclick="imprimirCarnets()">🖨️ Imprimir todos los QRs</button>
+      <button class="btn-chico btn-s" onclick="copiasTodas(1)">Todas = 1</button>
+      <button class="btn-chico btn-s" onclick="copiasTodas(5)">Todas = 5</button>
+      <button class="btn-chico btn-s" onclick="copiasTodas(10)">Todas = 10</button>
+    </div>
+    <div class="fila-botones">
+      <button class="btn-s" onclick="imprimirCarnets()">🖨️ Imprimir stickers</button>
+      <button class="btn-d" onclick="borrarTodasPersonas()">🗑️ Borrar todas</button>
     </div>
   </div>
 </div>
@@ -322,13 +330,29 @@ function renderPersonas(){
     const qrDiv = document.createElement('div'); qrDiv.className = 'qr-mini';
     const info = document.createElement('div'); info.className = 'info';
     info.innerHTML = '<div class="n">'+p.nombre+'</div><div class="c">'+p.codigo+'</div>';
+    const cop = document.createElement('input');
+    cop.type = 'number'; cop.min = '0'; cop.className = 'inp-copias'; cop.inputMode = 'numeric';
+    cop.value = (p.copias==null ? 1 : p.copias);
+    cop.title = 'Stickers a imprimir';
+    cop.onchange = ()=>{ p.copias = Math.max(0, parseInt(cop.value)||0); cop.value = p.copias; guardar(); };
     const btn = document.createElement('button');
     btn.className = 'btn-d btn-chico'; btn.textContent = '✕';
     btn.onclick = ()=>eliminarPersona(p.codigo);
-    fila.appendChild(qrDiv); fila.appendChild(info); fila.appendChild(btn);
+    fila.appendChild(qrDiv); fila.appendChild(info); fila.appendChild(cop); fila.appendChild(btn);
     cont.appendChild(fila);
     new QRCode(qrDiv, { text: p.codigo, width: 52, height: 52, correctLevel: QRCode.CorrectLevel.M });
   });
+}
+function copiasTodas(n){
+  db.personas.forEach(p=>p.copias=n);
+  guardar(); renderPersonas();
+}
+function borrarTodasPersonas(){
+  if(db.personas.length===0){ toast('No hay personas'); return; }
+  if(!confirm('¿Borrar TODAS las personas ('+db.personas.length+')? Los registros históricos de escaneo se conservan.')) return;
+  db.personas = [];
+  guardar(); renderPersonas(); renderSelManual();
+  toast('✓ Personas borradas');
 }
 function siguienteCodigoNum(){
   let n = 1;
@@ -378,15 +402,22 @@ function imprimirCarnets(){
     '}';
   const hoja = document.getElementById('hoja-print');
   hoja.innerHTML = '';
+  let total = 0;
   db.personas.forEach(p=>{
-    const c = document.createElement('div'); c.className = 'carnet';
-    const qr = document.createElement('div'); qr.className = 'qr-print';
-    c.appendChild(qr);
-    const n = document.createElement('div'); n.className='cn'; n.textContent = p.nombre; c.appendChild(n);
-    const cc = document.createElement('div'); cc.className='cc'; cc.textContent = p.codigo; c.appendChild(cc);
-    hoja.appendChild(c);
-    new QRCode(qr, { text: p.codigo, width: 150, height: 150, correctLevel: QRCode.CorrectLevel.M });
+    const copias = p.copias==null ? 1 : p.copias;
+    for(let i=0; i<copias; i++){
+      const c = document.createElement('div'); c.className = 'carnet';
+      const qr = document.createElement('div'); qr.className = 'qr-print';
+      c.appendChild(qr);
+      const n = document.createElement('div'); n.className='cn'; n.textContent = p.nombre; c.appendChild(n);
+      const cc = document.createElement('div'); cc.className='cc'; cc.textContent = p.codigo; c.appendChild(cc);
+      hoja.appendChild(c);
+      new QRCode(qr, { text: p.codigo, width: 150, height: 150, correctLevel: QRCode.CorrectLevel.M });
+      total++;
+    }
   });
+  if(total===0){ toast('Todas las personas tienen 0 copias'); return; }
+  toast('Imprimiendo ' + total + ' stickers…');
   setTimeout(()=>window.print(), 400);
 }
 
