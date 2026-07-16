@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Control de Enraizamiento</title>
+<title>Control de Cultivo</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -15,9 +15,13 @@
 }
 *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
 body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; background:var(--gris); color:var(--texto); padding-bottom:74px;}
-header{background:var(--verde); color:#fff; padding:14px 16px; position:sticky; top:0; z-index:50; display:flex; justify-content:space-between; align-items:center;}
+header{background:var(--verde); color:#fff; padding:12px 16px 8px; position:sticky; top:0; z-index:50;}
+.header-fila{display:flex; justify-content:space-between; align-items:center;}
 header h1{font-size:17px; font-weight:600;}
 header .fecha{font-size:12px; opacity:.9;}
+.modulos{display:flex; gap:8px; margin-top:10px;}
+.modulos button{flex:1; padding:8px; font-size:13px; border-radius:8px; background:rgba(255,255,255,.15); color:#fff; font-weight:600;}
+.modulos button.activa{background:#fff; color:var(--verde-osc);}
 .tab{display:none; padding:14px; max-width:720px; margin:0 auto;}
 .tab.activa{display:block;}
 .card{background:#fff; border-radius:var(--radius); padding:16px; margin-bottom:12px; box-shadow:0 1px 3px rgba(0,0,0,.08);}
@@ -71,8 +75,13 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
 .fila-botones button{flex:1;}
 .vacio{text-align:center; color:var(--texto2); padding:22px; font-size:14px;}
 /* Toast */
-#toast{position:fixed; bottom:84px; left:50%; transform:translateX(-50%); background:#323232; color:#fff; padding:11px 20px; border-radius:24px; font-size:14px; opacity:0; transition:opacity .3s; z-index:100; pointer-events:none; white-space:nowrap;}
+#toast{position:fixed; bottom:84px; left:50%; transform:translateX(-50%); background:#323232; color:#fff; padding:11px 20px; border-radius:24px; font-size:14px; opacity:0; transition:opacity .3s; z-index:300; pointer-events:none; white-space:nowrap;}
 #toast.ver{opacity:1;}
+/* Modal (registro de corte) */
+.modal-fondo{display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:200; align-items:center; justify-content:center; padding:20px;}
+.modal-fondo.ver{display:flex;}
+.modal-card{background:#fff; border-radius:var(--radius); padding:20px; width:100%; max-width:400px;}
+.modal-card .nombre{font-size:19px; font-weight:700; color:var(--verde-osc); text-align:center;}
 /* Impresión de etiquetas QR */
 #hoja-print{display:none;}
 @media print{
@@ -90,8 +99,14 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
 <body>
 
 <header>
-  <h1>🌱 Control de Enraizamiento</h1>
-  <span class="fecha" id="fecha-hoy"></span>
+  <div class="header-fila">
+    <h1>🌱 Control de Cultivo</h1>
+    <span class="fecha" id="fecha-hoy"></span>
+  </div>
+  <div class="modulos">
+    <button id="mod-enr" onclick="setModulo('enr')">🌱 Enraizamiento</button>
+    <button id="mod-cor" onclick="setModulo('cor')">✂️ Corte</button>
+  </div>
 </header>
 
 <!-- ============ ESCANEAR ============ -->
@@ -112,20 +127,18 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
     <h2>Registro manual (sin QR)</h2>
     <select id="sel-manual"></select>
     <div style="margin-top:10px;">
-      <button class="btn-s" style="width:100%;" onclick="registrarManual()">＋ Registrar 1 bandeja</button>
+      <button class="btn-s" style="width:100%;" id="btn-manual" onclick="registrarManual()">＋ Registrar</button>
     </div>
   </div>
   <div class="card" style="background:var(--verde-claro);">
-    <div style="font-size:13px; color:var(--verde-osc);">
-      💡 Cada escaneo registra <b>1 bandeja</b> = <b><span id="info-esq">50</span> esquejes</b>. Cambia la cantidad en Configuración. También funciona con pistola lectora USB/Bluetooth (modo teclado).
-    </div>
+    <div style="font-size:13px; color:var(--verde-osc);" id="info-modo"></div>
   </div>
 </div>
 
 <!-- ============ PERSONAS ============ -->
 <div class="tab" id="tab-personas">
   <div class="card">
-    <h2>Agregar persona</h2>
+    <h2>Agregar persona <span id="pers-mod" style="font-weight:400;"></span></h2>
     <label>Nombre completo</label>
     <input type="text" id="inp-nombre" placeholder="Ej: María González">
     <label>Código (opcional, se genera solo)</label>
@@ -168,20 +181,20 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
     </select>
   </div>
   <div class="kpis">
-    <div class="kpi"><div class="v" id="kpi-bandejas">0</div><div class="t">Bandejas</div></div>
-    <div class="kpi"><div class="v" id="kpi-esquejes">0</div><div class="t">Esquejes</div></div>
-    <div class="kpi"><div class="v" id="kpi-personas">0</div><div class="t">Personas activas</div></div>
-    <div class="kpi"><div class="v" id="kpi-promedio">0</div><div class="t">Bandejas/persona</div></div>
+    <div class="kpi"><div class="v" id="kpi-v1">0</div><div class="t" id="kpi-t1"></div></div>
+    <div class="kpi"><div class="v" id="kpi-v2">0</div><div class="t" id="kpi-t2"></div></div>
+    <div class="kpi"><div class="v" id="kpi-v3">0</div><div class="t">Personas activas</div></div>
+    <div class="kpi"><div class="v" id="kpi-v4">0</div><div class="t" id="kpi-t4"></div></div>
   </div>
   <div class="card">
-    <h2>Bandejas por persona</h2>
+    <h2 id="titulo-grafico">Producción por persona</h2>
     <div id="grafico"></div>
   </div>
   <div class="card">
     <h2>Últimos registros</h2>
     <div style="overflow-x:auto;">
       <table>
-        <thead><tr><th>Hora</th><th>Persona</th><th>Esquejes</th><th></th></tr></thead>
+        <thead><tr id="tabla-encabezado"></tr></thead>
         <tbody id="tabla-registros"></tbody>
       </table>
     </div>
@@ -197,12 +210,19 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
 <!-- ============ CONFIGURACIÓN ============ -->
 <div class="tab" id="tab-config">
   <div class="card">
-    <h2>Parámetros</h2>
-    <label>Esquejes por bandeja</label>
-    <input type="number" id="cfg-esquejes" min="1" inputmode="numeric">
+    <h2>Parámetros <span id="cfg-mod" style="font-weight:400;"></span></h2>
+    <div id="cfg-solo-enr">
+      <label>Esquejes por bandeja</label>
+      <input type="number" id="cfg-esquejes" min="1" inputmode="numeric">
+    </div>
+    <div id="cfg-solo-cor">
+      <label>Unidades contenedoras y sus tallos por ramo (Nombre=tallos, separadas por coma)</label>
+      <input type="text" id="cfg-unidades" placeholder="Ej: Und 1=10, Und 2=8, Und 3=10">
+      <div style="font-size:12px; color:var(--texto2); margin-top:4px;">Al registrar, la persona indica la unidad y cuántos ramos; la app calcula los tallos (ramos × tallos de la unidad).</div>
+    </div>
     <label>Segundos de espera entre escaneos de la misma persona (evita dobles)</label>
     <input type="number" id="cfg-cooldown" min="0" inputmode="numeric">
-    <label>Nombre de la finca / proceso (aparece en el Excel y carnets)</label>
+    <label>Nombre de la finca / proceso (compartido, aparece en el Excel)</label>
     <input type="text" id="cfg-finca" placeholder="Ej: Finca La Esperanza">
     <div style="margin-top:12px;">
       <button class="btn-p" onclick="guardarConfig()">💾 Guardar</button>
@@ -210,7 +230,7 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
   </div>
   <div class="card">
     <h2>Impresión de etiquetas QR (stickers)</h2>
-    <div style="font-size:12px; color:var(--texto2);">Mide tus stickers con una regla, en milímetros. Haz una impresión de prueba en papel normal y ponla encima de la lámina a contraluz para verificar antes de usar los stickers.</div>
+    <div style="font-size:12px; color:var(--texto2);">Compartido entre módulos. Mide tus stickers con una regla, en milímetros. Haz una impresión de prueba en papel normal y ponla encima de la lámina a contraluz para verificar antes de usar los stickers.</div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 10px;">
       <div><label>Etiquetas por fila</label><input type="number" id="et-cols" min="1" inputmode="numeric"></div>
       <div><label>Tamaño del QR (% de la etiqueta)</label><input type="number" id="et-qr" min="30" max="90" inputmode="numeric"></div>
@@ -227,14 +247,14 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
   </div>
   <div class="card">
     <h2>Respaldo de datos</h2>
-    <div style="font-size:13px; color:var(--texto2); margin-bottom:10px;">Los datos se guardan en este teléfono. Descarga un respaldo con frecuencia.</div>
+    <div style="font-size:13px; color:var(--texto2); margin-bottom:10px;">Los datos de ambos módulos se guardan en este teléfono. Descarga un respaldo con frecuencia.</div>
     <div class="fila-botones">
       <button class="btn-s" onclick="exportarRespaldo()">⬇️ Descargar respaldo</button>
       <button class="btn-s" onclick="document.getElementById('inp-respaldo').click()">⬆️ Restaurar</button>
     </div>
     <input type="file" id="inp-respaldo" accept=".json" style="display:none;" onchange="importarRespaldo(event)">
     <div style="margin-top:10px;">
-      <button class="btn-d" style="width:100%;" onclick="borrarTodo()">🗑️ Borrar todos los registros</button>
+      <button class="btn-d" style="width:100%;" onclick="borrarTodo()">🗑️ Borrar registros de este módulo</button>
     </div>
   </div>
 </div>
@@ -254,20 +274,86 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
     Config</button>
 </nav>
 
+<!-- Modal de registro de corte -->
+<div class="modal-fondo" id="modal-corte">
+  <div class="modal-card">
+    <div class="nombre" id="md-nombre"></div>
+    <label>Unidad contenedora</label>
+    <select id="md-unidad" onchange="calcularTallos()"></select>
+    <label>Número de ramos</label>
+    <input type="number" id="md-ramos" min="1" inputmode="numeric" placeholder="Ej: 25" oninput="calcularTallos()">
+    <div id="md-total" style="text-align:center; font-weight:600; color:var(--verde-osc); margin-top:10px; min-height:20px;"></div>
+    <div class="fila-botones">
+      <button class="btn-s" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn-p" style="width:auto;" onclick="confirmarCorte()">✓ Registrar</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 <div id="hoja-print"></div>
 
 <script>
 /* ================= DATOS ================= */
-const LS = 'enraizamiento_v1';
+const LS = 'cultivo_v2';
+const LS_V1 = 'enraizamiento_v1';
 const ETIQ_DEF = { cols: 4, ancho: 30, alto: 25, gh: 3, gv: 3, mt: 5, ml: 5, qr: 62 };
-let db = { personas: [], registros: [], config: { esquejesPorBandeja: 50, cooldown: 5, finca: '', etiq: Object.assign({}, ETIQ_DEF) } };
+const MODS = { enr: 'Enraizamiento', cor: 'Corte' };
+
+let db = {
+  mod: 'enr',
+  finca: '',
+  etiq: Object.assign({}, ETIQ_DEF),
+  enr: { personas: [], registros: [], config: { esquejes: 50, cooldown: 5 } },
+  cor: { personas: [], registros: [], config: { cooldown: 5, unidades: ['Malla', 'Canastilla', 'Carro'] } }
+};
+
+function M(){ return db[db.mod]; }
+
+function normalizar(){
+  if(!MODS[db.mod]) db.mod = 'enr';
+  db.etiq = Object.assign({}, ETIQ_DEF, db.etiq||{});
+  if(!db.enr) db.enr = { personas:[], registros:[], config:{} };
+  if(!db.cor) db.cor = { personas:[], registros:[], config:{} };
+  db.enr.personas = db.enr.personas||[]; db.enr.registros = db.enr.registros||[];
+  db.cor.personas = db.cor.personas||[]; db.cor.registros = db.cor.registros||[];
+  db.enr.config = Object.assign({ esquejes: 50, cooldown: 5 }, db.enr.config||{});
+  db.cor.config = Object.assign({ cooldown: 5 }, db.cor.config||{});
+  let u = db.cor.config.unidades;
+  if(!Array.isArray(u) || u.length===0) u = ['Und 1=10','Und 2=8','Und 3=10'];
+  // acepta formato viejo (texto) y nuevo ({n, r})
+  db.cor.config.unidades = u.map(x=>{
+    if(typeof x==='string'){ const partes = x.split('='); return { n: partes[0].trim(), r: parseInt(partes[1]) || null }; }
+    return { n: String(x.n||'').trim(), r: x.r || null };
+  }).filter(x=>x.n.length>0);
+  if(db.cor.config.unidades.length===0) db.cor.config.unidades = [{n:'Und 1',r:10},{n:'Und 2',r:8},{n:'Und 3',r:10}];
+}
 
 function cargar(){
   try{
     const raw = localStorage.getItem(LS);
-    if(raw){ const d = JSON.parse(raw); db = Object.assign(db, d); db.config = Object.assign({esquejesPorBandeja:50, cooldown:5, finca:''}, d.config||{}); }
+    if(raw){
+      const d = JSON.parse(raw);
+      db.mod = d.mod||'enr'; db.finca = d.finca||'';
+      db.etiq = Object.assign({}, ETIQ_DEF, d.etiq||{});
+      ['enr','cor'].forEach(m=>{ if(d[m]) db[m] = d[m]; });
+    } else {
+      // migración desde la versión anterior (solo enraizamiento)
+      const v1raw = localStorage.getItem(LS_V1);
+      if(v1raw){
+        const d = JSON.parse(v1raw);
+        db.enr.personas = d.personas||[];
+        db.enr.registros = (d.registros||[]).map(r=>({ts:r.ts, codigo:r.codigo, nombre:r.nombre, esquejes:r.esquejes, origen:r.origen}));
+        if(d.config){
+          db.enr.config.esquejes = d.config.esquejesPorBandeja||50;
+          if(d.config.cooldown!=null) db.enr.config.cooldown = d.config.cooldown;
+          db.finca = d.config.finca||'';
+          if(d.config.etiq) db.etiq = Object.assign({}, ETIQ_DEF, d.config.etiq);
+        }
+      }
+    }
   }catch(e){}
+  normalizar();
 }
 function guardar(){ localStorage.setItem(LS, JSON.stringify(db)); }
 
@@ -280,15 +366,48 @@ function toast(msg){
 function fmtHora(ts){ return new Date(ts).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}); }
 function fmtFecha(ts){ return new Date(ts).toLocaleDateString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric'}); }
 function inicioDia(d){ const x=new Date(d); x.setHours(0,0,0,0); return x.getTime(); }
+function personaPorCodigo(c){ return M().personas.find(p=>p.codigo===c); }
 function nuevoCodigo(){
-  let n = db.personas.length + 1;
+  let n = M().personas.length + 1;
   let c;
-  do { c = 'P' + String(n).padStart(3,'0'); n++; } while (db.personas.some(p=>p.codigo===c));
+  do { c = 'P' + String(n).padStart(3,'0'); n++; } while (M().personas.some(p=>p.codigo===c));
   return c;
 }
-function personaPorCodigo(c){ return db.personas.find(p=>p.codigo===c); }
+function siguienteCodigoNum(){
+  let n = 1;
+  while(M().personas.some(p=>p.codigo===String(n))) n++;
+  return String(n);
+}
 
-/* ================= TABS ================= */
+/* ================= MÓDULOS Y TABS ================= */
+function setModulo(m){
+  if(db.mod===m) return;
+  db.mod = m;
+  guardar();
+  cerrarModal();
+  document.getElementById('res-scan').className = 'resultado-scan';
+  refrescarUI();
+  toast('Módulo: ' + MODS[m]);
+}
+function refrescarUI(){
+  document.getElementById('mod-enr').classList.toggle('activa', db.mod==='enr');
+  document.getElementById('mod-cor').classList.toggle('activa', db.mod==='cor');
+  document.getElementById('pers-mod').textContent = '· ' + MODS[db.mod];
+  document.getElementById('cfg-mod').textContent = '· ' + MODS[db.mod];
+  document.getElementById('cfg-solo-enr').style.display = db.mod==='enr' ? 'block' : 'none';
+  document.getElementById('cfg-solo-cor').style.display = db.mod==='cor' ? 'block' : 'none';
+  if(db.mod==='enr'){
+    document.getElementById('info-modo').innerHTML = '💡 Cada escaneo registra <b>1 bandeja</b> = <b>' + db.enr.config.esquejes + ' esquejes</b>. Cambia la cantidad en Configuración. También funciona con pistola lectora USB/Bluetooth (modo teclado).';
+    document.getElementById('btn-manual').textContent = '＋ Registrar 1 bandeja';
+  } else {
+    document.getElementById('info-modo').innerHTML = '💡 Cada escaneo pregunta el <b>número de ramos</b> y la <b>unidad contenedora</b>. Configura las unidades en Configuración. También funciona con pistola lectora USB/Bluetooth (modo teclado).';
+    document.getElementById('btn-manual').textContent = '＋ Registrar corte';
+  }
+  renderPersonas();
+  renderSelManual();
+  cargarConfigUI();
+  renderDashboard();
+}
 function irTab(nombre){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('activa'));
   document.getElementById('tab-'+nombre).classList.add('activa');
@@ -305,26 +424,37 @@ function agregarPersona(){
   if(!nombre){ toast('Escribe el nombre'); return; }
   if(!codigo) codigo = nuevoCodigo();
   if(personaPorCodigo(codigo)){ toast('Ese código ya existe'); return; }
-  db.personas.push({ codigo, nombre, creado: Date.now() });
+  M().personas.push({ codigo, nombre, creado: Date.now() });
   guardar();
   document.getElementById('inp-nombre').value = '';
   document.getElementById('inp-codigo').value = '';
-  renderPersonas();
+  renderPersonas(); renderSelManual();
   toast('✓ ' + nombre + ' agregada (' + codigo + ')');
 }
 function eliminarPersona(codigo){
   const p = personaPorCodigo(codigo);
   if(!p) return;
-  if(!confirm('¿Eliminar a ' + p.nombre + '? Sus registros históricos se conservan.')) return;
-  db.personas = db.personas.filter(x=>x.codigo!==codigo);
+  if(!confirm('¿Eliminar a ' + p.nombre + ' de ' + MODS[db.mod] + '? Sus registros históricos se conservan.')) return;
+  M().personas = M().personas.filter(x=>x.codigo!==codigo);
+  guardar(); renderPersonas(); renderSelManual();
+}
+function borrarTodasPersonas(){
+  if(M().personas.length===0){ toast('No hay personas'); return; }
+  if(!confirm('¿Borrar TODAS las personas de ' + MODS[db.mod] + ' (' + M().personas.length + ')? Los registros históricos de escaneo se conservan.')) return;
+  M().personas = [];
+  guardar(); renderPersonas(); renderSelManual();
+  toast('✓ Personas borradas');
+}
+function copiasTodas(n){
+  M().personas.forEach(p=>p.copias=n);
   guardar(); renderPersonas();
 }
 function renderPersonas(){
   const cont = document.getElementById('lista-personas');
-  document.getElementById('cnt-personas').textContent = db.personas.length;
+  document.getElementById('cnt-personas').textContent = M().personas.length;
   cont.innerHTML = '';
-  if(db.personas.length===0){ cont.innerHTML = '<div class="vacio">Aún no hay personas. Agrega la primera arriba.</div>'; return; }
-  db.personas.forEach(p=>{
+  if(M().personas.length===0){ cont.innerHTML = '<div class="vacio">Aún no hay personas en ' + MODS[db.mod] + '. Agrega la primera arriba.</div>'; return; }
+  M().personas.forEach(p=>{
     const fila = document.createElement('div');
     fila.className = 'persona-item';
     const qrDiv = document.createElement('div'); qrDiv.className = 'qr-mini';
@@ -343,22 +473,6 @@ function renderPersonas(){
     new QRCode(qrDiv, { text: p.codigo, width: 52, height: 52, correctLevel: QRCode.CorrectLevel.M });
   });
 }
-function copiasTodas(n){
-  db.personas.forEach(p=>p.copias=n);
-  guardar(); renderPersonas();
-}
-function borrarTodasPersonas(){
-  if(db.personas.length===0){ toast('No hay personas'); return; }
-  if(!confirm('¿Borrar TODAS las personas ('+db.personas.length+')? Los registros históricos de escaneo se conservan.')) return;
-  db.personas = [];
-  guardar(); renderPersonas(); renderSelManual();
-  toast('✓ Personas borradas');
-}
-function siguienteCodigoNum(){
-  let n = 1;
-  while(db.personas.some(p=>p.codigo===String(n))) n++;
-  return String(n);
-}
 function importarExcel(ev){
   const f = ev.target.files[0];
   if(!f) return;
@@ -375,8 +489,8 @@ function importarExcel(ev){
         if(!nombre) return;
         if(/^(nombre|persona)/i.test(nombre) && /^c(ó|o)digo/i.test(codigo)) return; // fila de encabezado
         if(!codigo) codigo = siguienteCodigoNum();
-        if(personaPorCodigo(codigo) || db.personas.some(p=>p.nombre.toLowerCase()===nombre.toLowerCase())){ omitidas++; return; }
-        db.personas.push({ codigo, nombre, creado: Date.now() });
+        if(personaPorCodigo(codigo) || M().personas.some(p=>p.nombre.toLowerCase()===nombre.toLowerCase())){ omitidas++; return; }
+        M().personas.push({ codigo, nombre, creado: Date.now() });
         agregadas++;
       });
       guardar(); renderPersonas(); renderSelManual();
@@ -387,8 +501,8 @@ function importarExcel(ev){
   ev.target.value = '';
 }
 function imprimirCarnets(){
-  if(db.personas.length===0){ toast('No hay personas para imprimir'); return; }
-  const e = Object.assign({}, ETIQ_DEF, db.config.etiq||{});
+  if(M().personas.length===0){ toast('No hay personas para imprimir'); return; }
+  const e = Object.assign({}, ETIQ_DEF, db.etiq||{});
   const qrmm = Math.min(e.ancho, e.alto) * (e.qr/100);
   const fs = Math.max(3.5, Math.min(8, e.ancho/6));
   let st = document.getElementById('estilo-print');
@@ -403,7 +517,7 @@ function imprimirCarnets(){
   const hoja = document.getElementById('hoja-print');
   hoja.innerHTML = '';
   let total = 0;
-  db.personas.forEach(p=>{
+  M().personas.forEach(p=>{
     const copias = p.copias==null ? 1 : p.copias;
     for(let i=0; i<copias; i++){
       const c = document.createElement('div'); c.className = 'carnet';
@@ -422,34 +536,102 @@ function imprimirCarnets(){
 }
 
 /* ================= REGISTRO ================= */
-const ultimoScan = {}; // codigo -> timestamp
-function registrar(codigo, origen){
-  const p = personaPorCodigo(codigo);
+const ultimoScan = {}; // "mod|codigo" -> timestamp
+let pendienteCorte = null; // {codigo, origen} mientras el modal está abierto
+
+function mostrarError(codigo){
   const res = document.getElementById('res-scan');
-  if(!p){
-    res.className = 'resultado-scan err';
-    document.getElementById('rs-nombre').textContent = 'QR no reconocido';
-    document.getElementById('rs-detalle').textContent = 'Código: ' + codigo;
-    document.getElementById('rs-conteo').textContent = 'Registra a la persona en la pestaña Personas';
-    if(navigator.vibrate) navigator.vibrate([80,60,80]);
-    return;
-  }
+  res.className = 'resultado-scan err';
+  document.getElementById('rs-nombre').textContent = 'QR no reconocido';
+  document.getElementById('rs-detalle').textContent = 'Código: ' + codigo + ' · Módulo: ' + MODS[db.mod];
+  document.getElementById('rs-conteo').textContent = 'Registra a la persona en la pestaña Personas';
+  if(navigator.vibrate) navigator.vibrate([80,60,80]);
+}
+function enCooldown(codigo){
+  const cd = (M().config.cooldown||0) * 1000;
+  const k = db.mod + '|' + codigo;
+  return ultimoScan[k] && (Date.now() - ultimoScan[k]) < cd;
+}
+function marcarScan(codigo){ ultimoScan[db.mod + '|' + codigo] = Date.now(); }
+
+function registrar(codigo, origen){
+  if(db.mod==='cor'){ registrarCorte(codigo, origen); } else { registrarEnr(codigo, origen); }
+}
+
+function registrarEnr(codigo, origen){
+  const p = personaPorCodigo(codigo);
+  if(!p){ mostrarError(codigo); return; }
+  if(enCooldown(codigo)){ toast('⏳ Espera, ' + p.nombre + ' ya fue escaneada hace un momento'); return; }
+  marcarScan(codigo);
   const ahora = Date.now();
-  const cd = (db.config.cooldown||0) * 1000;
-  if(ultimoScan[codigo] && (ahora - ultimoScan[codigo]) < cd){
-    toast('⏳ Espera, ' + p.nombre + ' ya fue escaneada hace un momento');
-    return;
-  }
-  ultimoScan[codigo] = ahora;
-  const esq = db.config.esquejesPorBandeja;
-  db.registros.push({ ts: ahora, codigo: p.codigo, nombre: p.nombre, esquejes: esq, origen: origen||'qr' });
+  const esq = db.enr.config.esquejes;
+  db.enr.registros.push({ ts: ahora, codigo: p.codigo, nombre: p.nombre, esquejes: esq, origen: origen||'qr' });
   guardar();
   const hoyIni = inicioDia(ahora);
-  const hoy = db.registros.filter(r=>r.codigo===p.codigo && r.ts>=hoyIni);
+  const hoy = db.enr.registros.filter(r=>r.codigo===p.codigo && r.ts>=hoyIni);
+  const res = document.getElementById('res-scan');
   res.className = 'resultado-scan ok';
   document.getElementById('rs-nombre').textContent = '✓ ' + p.nombre;
   document.getElementById('rs-detalle').textContent = '1 bandeja registrada (' + esq + ' esquejes) · ' + fmtHora(ahora);
   document.getElementById('rs-conteo').textContent = 'Hoy lleva: ' + hoy.length + ' bandejas = ' + hoy.reduce((s,r)=>s+r.esquejes,0) + ' esquejes';
+  if(navigator.vibrate) navigator.vibrate(120);
+}
+
+function registrarCorte(codigo, origen){
+  if(pendienteCorte) return; // ya hay un registro en curso
+  const p = personaPorCodigo(codigo);
+  if(!p){ mostrarError(codigo); return; }
+  if(enCooldown(codigo)){ toast('⏳ Espera, ' + p.nombre + ' ya fue registrada hace un momento'); return; }
+  pendienteCorte = { codigo: codigo, origen: origen||'qr' };
+  document.getElementById('md-nombre').textContent = p.nombre;
+  const sel = document.getElementById('md-unidad');
+  const unidades = db.cor.config.unidades;
+  sel.innerHTML = unidades.map(u=>'<option value="'+u.n+'">'+u.n+(u.r ? ' — '+u.r+' tallos/ramo' : '')+'</option>').join('');
+  if(db.cor.config.ultimaUnidad && unidades.some(u=>u.n===db.cor.config.ultimaUnidad)) sel.value = db.cor.config.ultimaUnidad;
+  document.getElementById('md-ramos').value = '';
+  calcularTallos();
+  document.getElementById('modal-corte').classList.add('ver');
+  if(navigator.vibrate) navigator.vibrate(60);
+  setTimeout(()=>document.getElementById('md-ramos').focus(), 150);
+}
+function tallosDeUnidad(nombre){
+  const u = db.cor.config.unidades.find(x=>x.n===nombre);
+  return (u && u.r) ? u.r : null;
+}
+function calcularTallos(){
+  const ramos = parseInt(document.getElementById('md-ramos').value);
+  const tpu = tallosDeUnidad(document.getElementById('md-unidad').value);
+  const el = document.getElementById('md-total');
+  if(ramos>0 && tpu){ el.textContent = ramos + ' ramos × ' + tpu + ' tallos = ' + (ramos*tpu).toLocaleString('es-CO') + ' tallos'; }
+  else if(ramos>0){ el.textContent = ramos + ' ramos'; }
+  else { el.textContent = ''; }
+}
+function cerrarModal(){
+  pendienteCorte = null;
+  document.getElementById('modal-corte').classList.remove('ver');
+}
+function confirmarCorte(){
+  if(!pendienteCorte) return;
+  const ramos = parseInt(document.getElementById('md-ramos').value);
+  if(!ramos || ramos<1){ toast('Escribe el número de ramos'); return; }
+  const unidad = document.getElementById('md-unidad').value;
+  const p = personaPorCodigo(pendienteCorte.codigo);
+  if(!p){ cerrarModal(); return; }
+  const ahora = Date.now();
+  marcarScan(p.codigo);
+  const tpu = tallosDeUnidad(unidad);
+  const tallos = tpu ? ramos * tpu : null;
+  db.cor.registros.push({ ts: ahora, codigo: p.codigo, nombre: p.nombre, ramos: ramos, unidad: unidad, tallos: tallos, origen: pendienteCorte.origen });
+  db.cor.config.ultimaUnidad = unidad;
+  guardar();
+  cerrarModal();
+  const hoyIni = inicioDia(ahora);
+  const hoy = db.cor.registros.filter(r=>r.codigo===p.codigo && r.ts>=hoyIni);
+  const res = document.getElementById('res-scan');
+  res.className = 'resultado-scan ok';
+  document.getElementById('rs-nombre').textContent = '✓ ' + p.nombre;
+  document.getElementById('rs-detalle').textContent = ramos + ' ramos en ' + unidad + (tallos ? ' = ' + tallos.toLocaleString('es-CO') + ' tallos' : '') + ' · ' + fmtHora(ahora);
+  document.getElementById('rs-conteo').textContent = 'Hoy lleva: ' + hoy.length + ' registros = ' + hoy.reduce((s,r)=>s+r.ramos,0) + ' ramos / ' + hoy.reduce((s,r)=>s+(r.tallos||0),0).toLocaleString('es-CO') + ' tallos';
   if(navigator.vibrate) navigator.vibrate(120);
 }
 function registrarManual(){
@@ -459,13 +641,13 @@ function registrarManual(){
 }
 function eliminarRegistro(ts){
   if(!confirm('¿Eliminar este registro?')) return;
-  db.registros = db.registros.filter(r=>r.ts!==ts);
+  M().registros = M().registros.filter(r=>r.ts!==ts);
   guardar(); renderDashboard();
 }
 function renderSelManual(){
   const sel = document.getElementById('sel-manual');
   sel.innerHTML = '<option value="">— Seleccionar persona —</option>' +
-    db.personas.map(p=>'<option value="'+p.codigo+'">'+p.nombre+' ('+p.codigo+')</option>').join('');
+    M().personas.map(p=>'<option value="'+p.codigo+'">'+p.nombre+' ('+p.codigo+')</option>').join('');
 }
 
 /* ================= ESCÁNER CÁMARA ================= */
@@ -519,41 +701,58 @@ function rangoPeriodo(){
   }
 }
 function renderDashboard(){
+  const esCorte = db.mod==='cor';
   const [ini, fin] = rangoPeriodo();
-  const regs = db.registros.filter(r=>r.ts>=ini && r.ts<fin);
-  const esqTotal = regs.reduce((s,r)=>s+r.esquejes,0);
+  const regs = M().registros.filter(r=>r.ts>=ini && r.ts<fin);
+  const ramosT = esCorte ? regs.reduce((s,r)=>s+r.ramos,0) : 0;
+  const tallosT = esCorte ? regs.reduce((s,r)=>s+(r.tallos||0),0) : 0;
+  const esqT = esCorte ? 0 : regs.reduce((s,r)=>s+r.esquejes,0);
   const porPersona = {};
   regs.forEach(r=>{
-    if(!porPersona[r.codigo]) porPersona[r.codigo] = { nombre:r.nombre, bandejas:0, esquejes:0 };
-    porPersona[r.codigo].bandejas++;
-    porPersona[r.codigo].esquejes += r.esquejes;
+    if(!porPersona[r.codigo]) porPersona[r.codigo] = { nombre:r.nombre, n:0, suma:0, tallos:0 };
+    porPersona[r.codigo].n++;
+    porPersona[r.codigo].suma += esCorte ? r.ramos : r.esquejes;
+    if(esCorte) porPersona[r.codigo].tallos += (r.tallos||0);
   });
-  const lista = Object.values(porPersona).sort((a,b)=>b.bandejas-a.bandejas);
-  document.getElementById('kpi-bandejas').textContent = regs.length;
-  document.getElementById('kpi-esquejes').textContent = esqTotal.toLocaleString('es-CO');
-  document.getElementById('kpi-personas').textContent = lista.length;
-  document.getElementById('kpi-promedio').textContent = lista.length ? (regs.length/lista.length).toFixed(1) : 0;
+  const metrica = p => esCorte ? p.suma : p.n; // corte ordena por ramos; enraizamiento por bandejas
+  const lista = Object.values(porPersona).sort((a,b)=>metrica(b)-metrica(a));
+  document.getElementById('kpi-t1').textContent = esCorte ? 'Escaneos' : 'Bandejas';
+  document.getElementById('kpi-t2').textContent = esCorte ? 'Ramos' : 'Esquejes';
+  document.getElementById('kpi-t4').textContent = esCorte ? 'Tallos' : 'Bandejas/persona';
+  document.getElementById('kpi-v1').textContent = regs.length;
+  document.getElementById('kpi-v2').textContent = (esCorte ? ramosT : esqT).toLocaleString('es-CO');
+  document.getElementById('kpi-v3').textContent = lista.length;
+  document.getElementById('kpi-v4').textContent = esCorte ? tallosT.toLocaleString('es-CO') : (lista.length ? (regs.length/lista.length).toFixed(1) : 0);
+  document.getElementById('titulo-grafico').textContent = esCorte ? 'Ramos por persona' : 'Bandejas por persona';
   // gráfico de barras
   const g = document.getElementById('grafico');
   g.innerHTML = '';
   if(lista.length===0){ g.innerHTML = '<div class="vacio">Sin registros en este periodo</div>'; }
   else{
-    const max = lista[0].bandejas;
+    const max = metrica(lista[0]) || 1;
     lista.forEach(p=>{
+      const etiqueta = esCorte
+        ? p.suma.toLocaleString('es-CO') + ' ramos · ' + p.tallos.toLocaleString('es-CO') + ' tallos'
+        : p.n + ' band. · ' + p.suma.toLocaleString('es-CO') + ' esq.';
       const fila = document.createElement('div'); fila.className='barra-fila';
-      fila.innerHTML = '<div class="etiq"><b>'+p.nombre+'</b><span>'+p.bandejas+' band. · '+p.esquejes.toLocaleString('es-CO')+' esq.</span></div>'+
-        '<div class="barra-track"><div class="barra-fill" style="width:'+(p.bandejas/max*100)+'%"></div></div>';
+      fila.innerHTML = '<div class="etiq"><b>'+p.nombre+'</b><span>'+etiqueta+'</span></div>'+
+        '<div class="barra-track"><div class="barra-fill" style="width:'+(metrica(p)/max*100)+'%"></div></div>';
       g.appendChild(fila);
     });
   }
   // tabla últimos registros
+  document.getElementById('tabla-encabezado').innerHTML = esCorte
+    ? '<th>Hora</th><th>Persona</th><th>Ramos</th><th>Unidad</th><th>Tallos</th><th></th>'
+    : '<th>Hora</th><th>Persona</th><th>Esquejes</th><th></th>';
   const tb = document.getElementById('tabla-registros');
   tb.innerHTML = '';
   const ultimos = regs.slice().sort((a,b)=>b.ts-a.ts).slice(0,30);
-  if(ultimos.length===0){ tb.innerHTML = '<tr><td colspan="4" class="vacio">Sin registros</td></tr>'; }
+  if(ultimos.length===0){ tb.innerHTML = '<tr><td colspan="6" class="vacio">Sin registros</td></tr>'; }
   ultimos.forEach(r=>{
     const tr = document.createElement('tr');
-    tr.innerHTML = '<td>'+fmtFecha(r.ts)+'<br>'+fmtHora(r.ts)+'</td><td>'+r.nombre+'</td><td>'+r.esquejes+'</td>';
+    tr.innerHTML = esCorte
+      ? '<td>'+fmtFecha(r.ts)+'<br>'+fmtHora(r.ts)+'</td><td>'+r.nombre+'</td><td>'+r.ramos+'</td><td>'+r.unidad+'</td><td>'+(r.tallos!=null ? r.tallos.toLocaleString('es-CO') : '—')+'</td>'
+      : '<td>'+fmtFecha(r.ts)+'<br>'+fmtHora(r.ts)+'</td><td>'+r.nombre+'</td><td>'+r.esquejes+'</td>';
     const td = document.createElement('td');
     const b = document.createElement('button'); b.className='btn-d btn-chico'; b.textContent='✕';
     b.onclick = ()=>eliminarRegistro(r.ts);
@@ -564,23 +763,30 @@ function renderDashboard(){
 
 /* ================= EXPORTAR ================= */
 function exportarExcel(){
-  if(db.registros.length===0){ toast('No hay registros para exportar'); return; }
+  const esCorte = db.mod==='cor';
+  const regs = M().registros;
+  if(regs.length===0){ toast('No hay registros para exportar'); return; }
   const wb = XLSX.utils.book_new();
   // Hoja 1: registros detallados
-  const detalle = db.registros.map(r=>({
-    'Fecha': fmtFecha(r.ts), 'Hora': fmtHora(r.ts), 'Código': r.codigo,
-    'Persona': r.nombre, 'Bandejas': 1, 'Esquejes': r.esquejes, 'Origen': r.origen
-  }));
+  const detalle = regs.map(r=> esCorte
+    ? { 'Fecha': fmtFecha(r.ts), 'Hora': fmtHora(r.ts), 'Código': r.codigo, 'Persona': r.nombre, 'Ramos': r.ramos, 'Unidad': r.unidad, 'Tallos': r.tallos!=null ? r.tallos : '', 'Origen': r.origen }
+    : { 'Fecha': fmtFecha(r.ts), 'Hora': fmtHora(r.ts), 'Código': r.codigo, 'Persona': r.nombre, 'Bandejas': 1, 'Esquejes': r.esquejes, 'Origen': r.origen });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detalle), 'Registros');
   // Hoja 2: resumen por persona y día
   const res = {};
-  db.registros.forEach(r=>{
+  regs.forEach(r=>{
     const k = fmtFecha(r.ts) + '|' + r.codigo;
-    if(!res[k]) res[k] = { 'Fecha': fmtFecha(r.ts), 'Código': r.codigo, 'Persona': r.nombre, 'Bandejas': 0, 'Esquejes': 0 };
-    res[k]['Bandejas']++; res[k]['Esquejes'] += r.esquejes;
+    if(!res[k]){
+      res[k] = esCorte
+        ? { 'Fecha': fmtFecha(r.ts), 'Código': r.codigo, 'Persona': r.nombre, 'Escaneos': 0, 'Ramos': 0, 'Tallos': 0 }
+        : { 'Fecha': fmtFecha(r.ts), 'Código': r.codigo, 'Persona': r.nombre, 'Bandejas': 0, 'Esquejes': 0 };
+    }
+    if(esCorte){ res[k]['Escaneos']++; res[k]['Ramos'] += r.ramos; res[k]['Tallos'] += (r.tallos||0); }
+    else { res[k]['Bandejas']++; res[k]['Esquejes'] += r.esquejes; }
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.values(res)), 'Resumen diario');
-  const nombre = (db.config.finca ? db.config.finca.replace(/\s+/g,'_') + '_' : '') + 'enraizamiento_' + new Date().toISOString().slice(0,10) + '.xlsx';
+  const modNombre = esCorte ? 'corte' : 'enraizamiento';
+  const nombre = (db.finca ? db.finca.replace(/\s+/g,'_') + '_' : '') + modNombre + '_' + new Date().toISOString().slice(0,10) + '.xlsx';
   XLSX.writeFile(wb, nombre);
   toast('✓ Excel descargado');
 }
@@ -588,7 +794,7 @@ function exportarRespaldo(){
   const blob = new Blob([JSON.stringify(db)], {type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'respaldo_enraizamiento_' + new Date().toISOString().slice(0,10) + '.json';
+  a.download = 'respaldo_cultivo_' + new Date().toISOString().slice(0,10) + '.json';
   a.click();
   URL.revokeObjectURL(a.href);
 }
@@ -599,9 +805,25 @@ function importarRespaldo(ev){
   lector.onload = ()=>{
     try{
       const d = JSON.parse(lector.result);
-      if(!d.personas || !d.registros) throw new Error('formato');
-      db = Object.assign({config:{esquejesPorBandeja:50,cooldown:5,finca:''}}, d);
-      guardar(); cargarConfigUI(); renderPersonas(); renderSelManual(); renderDashboard();
+      if(d.enr || d.cor){
+        // respaldo v2
+        db.mod = d.mod||'enr'; db.finca = d.finca||'';
+        db.etiq = Object.assign({}, ETIQ_DEF, d.etiq||{});
+        if(d.enr) db.enr = d.enr;
+        if(d.cor) db.cor = d.cor;
+      } else if(d.personas && d.registros){
+        // respaldo v1 (solo enraizamiento)
+        db.enr.personas = d.personas;
+        db.enr.registros = d.registros;
+        if(d.config){
+          db.enr.config.esquejes = d.config.esquejesPorBandeja||50;
+          if(d.config.cooldown!=null) db.enr.config.cooldown = d.config.cooldown;
+          db.finca = d.config.finca||'';
+          if(d.config.etiq) db.etiq = Object.assign({}, ETIQ_DEF, d.config.etiq);
+        }
+      } else { throw new Error('formato'); }
+      normalizar();
+      guardar(); refrescarUI();
       toast('✓ Respaldo restaurado');
     }catch(e){ toast('Archivo no válido'); }
   };
@@ -609,21 +831,24 @@ function importarRespaldo(ev){
   ev.target.value = '';
 }
 function borrarTodo(){
-  if(!confirm('¿Borrar TODOS los registros de escaneo? Las personas y la configuración se conservan.')) return;
+  if(!confirm('¿Borrar TODOS los registros de ' + MODS[db.mod] + '? Las personas y la configuración se conservan.')) return;
   if(!confirm('Esta acción no se puede deshacer. ¿Confirmas? Descarga un respaldo primero si tienes dudas.')) return;
-  db.registros = [];
+  M().registros = [];
   guardar(); renderDashboard();
-  toast('Registros borrados');
+  toast('Registros de ' + MODS[db.mod] + ' borrados');
 }
 
 /* ================= CONFIG ================= */
 function cargarConfigUI(){
-  document.getElementById('cfg-esquejes').value = db.config.esquejesPorBandeja;
-  document.getElementById('cfg-cooldown').value = db.config.cooldown;
-  document.getElementById('cfg-finca').value = db.config.finca || '';
-  document.getElementById('info-esq').textContent = db.config.esquejesPorBandeja;
-  db.config.etiq = Object.assign({}, ETIQ_DEF, db.config.etiq||{});
-  const e = db.config.etiq;
+  if(db.mod==='enr'){
+    document.getElementById('cfg-esquejes').value = db.enr.config.esquejes;
+  } else {
+    document.getElementById('cfg-unidades').value = db.cor.config.unidades.map(u=>u.n + (u.r ? '='+u.r : '')).join(', ');
+  }
+  document.getElementById('cfg-cooldown').value = M().config.cooldown;
+  document.getElementById('cfg-finca').value = db.finca || '';
+  db.etiq = Object.assign({}, ETIQ_DEF, db.etiq||{});
+  const e = db.etiq;
   document.getElementById('et-cols').value = e.cols;
   document.getElementById('et-qr').value = e.qr;
   document.getElementById('et-ancho').value = e.ancho;
@@ -633,10 +858,29 @@ function cargarConfigUI(){
   document.getElementById('et-mt').value = e.mt;
   document.getElementById('et-ml').value = e.ml;
 }
+function guardarConfig(){
+  const c = parseInt(document.getElementById('cfg-cooldown').value);
+  if(db.mod==='enr'){
+    const e = parseInt(document.getElementById('cfg-esquejes').value);
+    if(!e || e<1){ toast('Esquejes por bandeja debe ser al menos 1'); return; }
+    db.enr.config.esquejes = e;
+  } else {
+    const unidades = document.getElementById('cfg-unidades').value.split(',').map(t=>{
+      const partes = t.split('=');
+      return { n: partes[0].trim(), r: parseInt(partes[1]) || null };
+    }).filter(u=>u.n.length>0);
+    if(unidades.length===0){ toast('Escribe al menos una unidad contenedora'); return; }
+    db.cor.config.unidades = unidades;
+  }
+  M().config.cooldown = isNaN(c)||c<0 ? 0 : c;
+  db.finca = document.getElementById('cfg-finca').value.trim();
+  guardar(); refrescarUI();
+  toast('✓ Configuración guardada');
+}
 function guardarEtiquetas(){
   const g = id => parseFloat(document.getElementById(id).value);
   const num = (v, def) => isNaN(v) || v < 0 ? def : v;
-  db.config.etiq = {
+  db.etiq = {
     cols: Math.max(1, Math.round(num(g('et-cols'), ETIQ_DEF.cols))),
     ancho: Math.max(10, num(g('et-ancho'), ETIQ_DEF.ancho)),
     alto: Math.max(10, num(g('et-alto'), ETIQ_DEF.alto)),
@@ -649,24 +893,14 @@ function guardarEtiquetas(){
   guardar(); cargarConfigUI();
   toast('✓ Ajustes de impresión guardados');
 }
-function guardarConfig(){
-  const e = parseInt(document.getElementById('cfg-esquejes').value);
-  const c = parseInt(document.getElementById('cfg-cooldown').value);
-  if(!e || e<1){ toast('Esquejes por bandeja debe ser al menos 1'); return; }
-  db.config.esquejesPorBandeja = e;
-  db.config.cooldown = isNaN(c)||c<0 ? 0 : c;
-  db.config.finca = document.getElementById('cfg-finca').value.trim();
-  guardar(); cargarConfigUI();
-  toast('✓ Configuración guardada');
-}
 
 /* ================= INICIO ================= */
 cargar();
-cargarConfigUI();
-renderPersonas();
-renderSelManual();
+guardar();
+refrescarUI();
 document.getElementById('fecha-hoy').textContent = new Date().toLocaleDateString('es-CO',{weekday:'short', day:'numeric', month:'short'});
 document.getElementById('btn-camara').onclick = toggleCamara;
+document.getElementById('md-ramos').addEventListener('keydown', (e)=>{ if(e.key==='Enter') confirmarCorte(); });
 </script>
 </body>
 </html>
