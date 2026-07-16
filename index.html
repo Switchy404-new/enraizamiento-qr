@@ -72,18 +72,18 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
 /* Toast */
 #toast{position:fixed; bottom:84px; left:50%; transform:translateX(-50%); background:#323232; color:#fff; padding:11px 20px; border-radius:24px; font-size:14px; opacity:0; transition:opacity .3s; z-index:100; pointer-events:none; white-space:nowrap;}
 #toast.ver{opacity:1;}
-/* Impresión de carnets */
+/* Impresión de etiquetas QR */
 #hoja-print{display:none;}
 @media print{
   body>*:not(#hoja-print){display:none!important;}
   body{padding:0; background:#fff;}
-  #hoja-print{display:grid!important; grid-template-columns:1fr 1fr; gap:16px; padding:10mm;}
-  .carnet{border:1.5px dashed #999; border-radius:8px; padding:14px; text-align:center; page-break-inside:avoid;}
-  .carnet .qr-print img,.carnet .qr-print canvas{width:150px!important; height:150px!important; margin:0 auto;}
-  .carnet .cn{font-size:17px; font-weight:700; margin-top:8px;}
-  .carnet .cc{font-size:12px; color:#555;}
-  .carnet .ct{font-size:11px; color:#888; margin-top:4px;}
+  #hoja-print{display:grid!important; justify-content:start; align-content:start;}
+  .carnet{display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; overflow:hidden; box-sizing:border-box; page-break-inside:avoid;}
+  .carnet .qr-print{line-height:0;}
+  .carnet .cn{font-weight:700; line-height:1.1;}
+  .carnet .cc{color:#000;}
 }
+@page{ margin:0; }
 </style>
 </head>
 <body>
@@ -201,6 +201,23 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
     </div>
   </div>
   <div class="card">
+    <h2>Impresión de etiquetas QR (stickers)</h2>
+    <div style="font-size:12px; color:var(--texto2);">Mide tus stickers con una regla, en milímetros. Haz una impresión de prueba en papel normal y ponla encima de la lámina a contraluz para verificar antes de usar los stickers.</div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 10px;">
+      <div><label>Etiquetas por fila</label><input type="number" id="et-cols" min="1" inputmode="numeric"></div>
+      <div><label>Tamaño del QR (% de la etiqueta)</label><input type="number" id="et-qr" min="30" max="90" inputmode="numeric"></div>
+      <div><label>Ancho de etiqueta (mm)</label><input type="number" id="et-ancho" min="10" step="0.5" inputmode="decimal"></div>
+      <div><label>Alto de etiqueta (mm)</label><input type="number" id="et-alto" min="10" step="0.5" inputmode="decimal"></div>
+      <div><label>Separación horizontal (mm)</label><input type="number" id="et-gh" min="0" step="0.5" inputmode="decimal"></div>
+      <div><label>Separación vertical (mm)</label><input type="number" id="et-gv" min="0" step="0.5" inputmode="decimal"></div>
+      <div><label>Margen superior (mm)</label><input type="number" id="et-mt" min="0" step="0.5" inputmode="decimal"></div>
+      <div><label>Margen izquierdo (mm)</label><input type="number" id="et-ml" min="0" step="0.5" inputmode="decimal"></div>
+    </div>
+    <div style="margin-top:12px;">
+      <button class="btn-p" onclick="guardarEtiquetas()">💾 Guardar ajustes de impresión</button>
+    </div>
+  </div>
+  <div class="card">
     <h2>Respaldo de datos</h2>
     <div style="font-size:13px; color:var(--texto2); margin-bottom:10px;">Los datos se guardan en este teléfono. Descarga un respaldo con frecuencia.</div>
     <div class="fila-botones">
@@ -235,7 +252,8 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
 <script>
 /* ================= DATOS ================= */
 const LS = 'enraizamiento_v1';
-let db = { personas: [], registros: [], config: { esquejesPorBandeja: 50, cooldown: 5, finca: '' } };
+const ETIQ_DEF = { cols: 4, ancho: 30, alto: 25, gh: 3, gv: 3, mt: 5, ml: 5, qr: 62 };
+let db = { personas: [], registros: [], config: { esquejesPorBandeja: 50, cooldown: 5, finca: '', etiq: Object.assign({}, ETIQ_DEF) } };
 
 function cargar(){
   try{
@@ -346,6 +364,18 @@ function importarExcel(ev){
 }
 function imprimirCarnets(){
   if(db.personas.length===0){ toast('No hay personas para imprimir'); return; }
+  const e = Object.assign({}, ETIQ_DEF, db.config.etiq||{});
+  const qrmm = Math.min(e.ancho, e.alto) * (e.qr/100);
+  const fs = Math.max(3.5, Math.min(8, e.ancho/6));
+  let st = document.getElementById('estilo-print');
+  if(!st){ st = document.createElement('style'); st.id = 'estilo-print'; document.head.appendChild(st); }
+  st.textContent = '@media print{'+
+    '#hoja-print{grid-template-columns:repeat('+e.cols+','+e.ancho+'mm); column-gap:'+e.gh+'mm; row-gap:'+e.gv+'mm; padding:'+e.mt+'mm 0 0 '+e.ml+'mm;}'+
+    '.carnet{width:'+e.ancho+'mm; height:'+e.alto+'mm;}'+
+    '.carnet .qr-print img,.carnet .qr-print canvas{width:'+qrmm+'mm!important; height:'+qrmm+'mm!important;}'+
+    '.carnet .cn{font-size:'+fs+'pt;}'+
+    '.carnet .cc{font-size:'+fs+'pt;}'+
+    '}';
   const hoja = document.getElementById('hoja-print');
   hoja.innerHTML = '';
   db.personas.forEach(p=>{
@@ -354,7 +384,6 @@ function imprimirCarnets(){
     c.appendChild(qr);
     const n = document.createElement('div'); n.className='cn'; n.textContent = p.nombre; c.appendChild(n);
     const cc = document.createElement('div'); cc.className='cc'; cc.textContent = p.codigo; c.appendChild(cc);
-    if(db.config.finca){ const f = document.createElement('div'); f.className='ct'; f.textContent = db.config.finca; c.appendChild(f); }
     hoja.appendChild(c);
     new QRCode(qr, { text: p.codigo, width: 150, height: 150, correctLevel: QRCode.CorrectLevel.M });
   });
@@ -562,6 +591,32 @@ function cargarConfigUI(){
   document.getElementById('cfg-cooldown').value = db.config.cooldown;
   document.getElementById('cfg-finca').value = db.config.finca || '';
   document.getElementById('info-esq').textContent = db.config.esquejesPorBandeja;
+  db.config.etiq = Object.assign({}, ETIQ_DEF, db.config.etiq||{});
+  const e = db.config.etiq;
+  document.getElementById('et-cols').value = e.cols;
+  document.getElementById('et-qr').value = e.qr;
+  document.getElementById('et-ancho').value = e.ancho;
+  document.getElementById('et-alto').value = e.alto;
+  document.getElementById('et-gh').value = e.gh;
+  document.getElementById('et-gv').value = e.gv;
+  document.getElementById('et-mt').value = e.mt;
+  document.getElementById('et-ml').value = e.ml;
+}
+function guardarEtiquetas(){
+  const g = id => parseFloat(document.getElementById(id).value);
+  const num = (v, def) => isNaN(v) || v < 0 ? def : v;
+  db.config.etiq = {
+    cols: Math.max(1, Math.round(num(g('et-cols'), ETIQ_DEF.cols))),
+    ancho: Math.max(10, num(g('et-ancho'), ETIQ_DEF.ancho)),
+    alto: Math.max(10, num(g('et-alto'), ETIQ_DEF.alto)),
+    gh: num(g('et-gh'), ETIQ_DEF.gh),
+    gv: num(g('et-gv'), ETIQ_DEF.gv),
+    mt: num(g('et-mt'), ETIQ_DEF.mt),
+    ml: num(g('et-ml'), ETIQ_DEF.ml),
+    qr: Math.min(90, Math.max(30, num(g('et-qr'), ETIQ_DEF.qr)))
+  };
+  guardar(); cargarConfigUI();
+  toast('✓ Ajustes de impresión guardados');
 }
 function guardarConfig(){
   const e = parseInt(document.getElementById('cfg-esquejes').value);
