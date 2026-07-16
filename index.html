@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Control de Enraizamiento</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --verde:#2e7d32; --verde-osc:#1b5e20; --verde-claro:#e8f5e9;
+  --gris:#f5f5f5; --texto:#212121; --texto2:#757575;
+  --rojo:#c62828; --amarillo:#f9a825; --radius:14px;
+}
+*{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
+body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; background:var(--gris); color:var(--texto); padding-bottom:74px;}
+header{background:var(--verde); color:#fff; padding:14px 16px; position:sticky; top:0; z-index:50; display:flex; justify-content:space-between; align-items:center;}
+header h1{font-size:17px; font-weight:600;}
+header .fecha{font-size:12px; opacity:.9;}
+.tab{display:none; padding:14px; max-width:720px; margin:0 auto;}
+.tab.activa{display:block;}
+.card{background:#fff; border-radius:var(--radius); padding:16px; margin-bottom:12px; box-shadow:0 1px 3px rgba(0,0,0,.08);}
+.card h2{font-size:15px; margin-bottom:10px; color:var(--verde-osc);}
+button{border:none; border-radius:10px; padding:12px 16px; font-size:15px; font-weight:600; cursor:pointer;}
+.btn-p{background:var(--verde); color:#fff; width:100%;}
+.btn-p:active{background:var(--verde-osc);}
+.btn-s{background:var(--verde-claro); color:var(--verde-osc);}
+.btn-d{background:#ffebee; color:var(--rojo);}
+.btn-chico{padding:7px 12px; font-size:13px; width:auto;}
+input,select{width:100%; padding:12px; border:1.5px solid #ddd; border-radius:10px; font-size:15px; background:#fff;}
+input:focus,select:focus{outline:none; border-color:var(--verde);}
+label{font-size:13px; color:var(--texto2); display:block; margin:10px 0 4px;}
+/* Nav inferior */
+nav{position:fixed; bottom:0; left:0; right:0; background:#fff; display:flex; border-top:1px solid #e0e0e0; z-index:50;}
+nav button{flex:1; background:none; padding:9px 4px; border-radius:0; font-size:11px; font-weight:500; color:var(--texto2); display:flex; flex-direction:column; align-items:center; gap:2px;}
+nav button.activa{color:var(--verde);}
+nav button svg{width:23px; height:23px;}
+/* Escáner */
+#lector{border-radius:var(--radius); overflow:hidden; background:#000; min-height:230px;}
+#lector video{border-radius:var(--radius);}
+.resultado-scan{text-align:center; padding:18px; border-radius:var(--radius); margin-top:12px; display:none;}
+.resultado-scan.ok{display:block; background:var(--verde-claro); border:2px solid var(--verde);}
+.resultado-scan.err{display:block; background:#ffebee; border:2px solid var(--rojo);}
+.resultado-scan .nombre{font-size:20px; font-weight:700;}
+.resultado-scan .detalle{font-size:14px; color:var(--texto2); margin-top:4px;}
+.resultado-scan .conteo{font-size:15px; margin-top:6px; font-weight:600; color:var(--verde-osc);}
+/* Personas */
+.persona-item{display:flex; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid #eee;}
+.persona-item:last-child{border-bottom:none;}
+.persona-item .qr-mini{width:52px; height:52px; flex-shrink:0;}
+.persona-item .qr-mini img, .persona-item .qr-mini canvas{width:52px!important; height:52px!important;}
+.persona-item .info{flex:1;}
+.persona-item .info .n{font-weight:600; font-size:15px;}
+.persona-item .info .c{font-size:12px; color:var(--texto2);}
+/* Dashboard */
+.kpis{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;}
+.kpi{background:#fff; border-radius:var(--radius); padding:14px; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.08);}
+.kpi .v{font-size:26px; font-weight:700; color:var(--verde-osc);}
+.kpi .t{font-size:12px; color:var(--texto2);}
+.barra-fila{margin-bottom:10px;}
+.barra-fila .etiq{display:flex; justify-content:space-between; font-size:13px; margin-bottom:3px;}
+.barra-fila .etiq b{font-weight:600;}
+.barra-track{background:#eee; border-radius:6px; height:14px; overflow:hidden;}
+.barra-fill{background:var(--verde); height:100%; border-radius:6px; transition:width .3s;}
+table{width:100%; border-collapse:collapse; font-size:13px;}
+th{text-align:left; color:var(--texto2); font-weight:600; padding:7px 4px; border-bottom:2px solid #eee;}
+td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
+.fila-botones{display:flex; gap:8px; margin-top:10px;}
+.fila-botones button{flex:1;}
+.vacio{text-align:center; color:var(--texto2); padding:22px; font-size:14px;}
+/* Toast */
+#toast{position:fixed; bottom:84px; left:50%; transform:translateX(-50%); background:#323232; color:#fff; padding:11px 20px; border-radius:24px; font-size:14px; opacity:0; transition:opacity .3s; z-index:100; pointer-events:none; white-space:nowrap;}
+#toast.ver{opacity:1;}
+/* Impresión de carnets */
+#hoja-print{display:none;}
+@media print{
+  body>*:not(#hoja-print){display:none!important;}
+  body{padding:0; background:#fff;}
+  #hoja-print{display:grid!important; grid-template-columns:1fr 1fr; gap:16px; padding:10mm;}
+  .carnet{border:1.5px dashed #999; border-radius:8px; padding:14px; text-align:center; page-break-inside:avoid;}
+  .carnet .qr-print img,.carnet .qr-print canvas{width:150px!important; height:150px!important; margin:0 auto;}
+  .carnet .cn{font-size:17px; font-weight:700; margin-top:8px;}
+  .carnet .cc{font-size:12px; color:#555;}
+  .carnet .ct{font-size:11px; color:#888; margin-top:4px;}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🌱 Control de Enraizamiento</h1>
+  <span class="fecha" id="fecha-hoy"></span>
+</header>
+
+<!-- ============ ESCANEAR ============ -->
+<div class="tab activa" id="tab-escanear">
+  <div class="card">
+    <h2>Escanear QR de la persona</h2>
+    <div id="lector"></div>
+    <div style="margin-top:10px;">
+      <button class="btn-p" id="btn-camara">📷 Iniciar cámara</button>
+    </div>
+    <div class="resultado-scan" id="res-scan">
+      <div class="nombre" id="rs-nombre"></div>
+      <div class="detalle" id="rs-detalle"></div>
+      <div class="conteo" id="rs-conteo"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Registro manual (sin QR)</h2>
+    <select id="sel-manual"></select>
+    <div style="margin-top:10px;">
+      <button class="btn-s" style="width:100%;" onclick="registrarManual()">＋ Registrar 1 bandeja</button>
+    </div>
+  </div>
+  <div class="card" style="background:var(--verde-claro);">
+    <div style="font-size:13px; color:var(--verde-osc);">
+      💡 Cada escaneo registra <b>1 bandeja</b> = <b><span id="info-esq">50</span> esquejes</b>. Cambia la cantidad en Configuración. También funciona con pistola lectora USB/Bluetooth (modo teclado).
+    </div>
+  </div>
+</div>
+
+<!-- ============ PERSONAS ============ -->
+<div class="tab" id="tab-personas">
+  <div class="card">
+    <h2>Agregar persona</h2>
+    <label>Nombre completo</label>
+    <input type="text" id="inp-nombre" placeholder="Ej: María González">
+    <label>Código (opcional, se genera solo)</label>
+    <input type="text" id="inp-codigo" placeholder="Ej: P001">
+    <div style="margin-top:12px;">
+      <button class="btn-p" onclick="agregarPersona()">＋ Agregar y generar QR</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Personas registradas (<span id="cnt-personas">0</span>)</h2>
+    <div id="lista-personas"></div>
+    <div class="fila-botones">
+      <button class="btn-s" onclick="imprimirCarnets()">🖨️ Imprimir todos los QRs</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DASHBOARD ============ -->
+<div class="tab" id="tab-dashboard">
+  <div class="card" style="padding:10px 16px;">
+    <label style="margin-top:0;">Periodo</label>
+    <select id="sel-periodo" onchange="renderDashboard()">
+      <option value="hoy">Hoy</option>
+      <option value="ayer">Ayer</option>
+      <option value="semana">Últimos 7 días</option>
+      <option value="mes">Últimos 30 días</option>
+      <option value="todo">Todo</option>
+    </select>
+  </div>
+  <div class="kpis">
+    <div class="kpi"><div class="v" id="kpi-bandejas">0</div><div class="t">Bandejas</div></div>
+    <div class="kpi"><div class="v" id="kpi-esquejes">0</div><div class="t">Esquejes</div></div>
+    <div class="kpi"><div class="v" id="kpi-personas">0</div><div class="t">Personas activas</div></div>
+    <div class="kpi"><div class="v" id="kpi-promedio">0</div><div class="t">Bandejas/persona</div></div>
+  </div>
+  <div class="card">
+    <h2>Bandejas por persona</h2>
+    <div id="grafico"></div>
+  </div>
+  <div class="card">
+    <h2>Últimos registros</h2>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>Hora</th><th>Persona</th><th>Esquejes</th><th></th></tr></thead>
+        <tbody id="tabla-registros"></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Exportar</h2>
+    <div class="fila-botones">
+      <button class="btn-p" onclick="exportarExcel()">📊 Descargar Excel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CONFIGURACIÓN ============ -->
+<div class="tab" id="tab-config">
+  <div class="card">
+    <h2>Parámetros</h2>
+    <label>Esquejes por bandeja</label>
+    <input type="number" id="cfg-esquejes" min="1" inputmode="numeric">
+    <label>Segundos de espera entre escaneos de la misma persona (evita dobles)</label>
+    <input type="number" id="cfg-cooldown" min="0" inputmode="numeric">
+    <label>Nombre de la finca / proceso (aparece en el Excel y carnets)</label>
+    <input type="text" id="cfg-finca" placeholder="Ej: Finca La Esperanza">
+    <div style="margin-top:12px;">
+      <button class="btn-p" onclick="guardarConfig()">💾 Guardar</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Respaldo de datos</h2>
+    <div style="font-size:13px; color:var(--texto2); margin-bottom:10px;">Los datos se guardan en este teléfono. Descarga un respaldo con frecuencia.</div>
+    <div class="fila-botones">
+      <button class="btn-s" onclick="exportarRespaldo()">⬇️ Descargar respaldo</button>
+      <button class="btn-s" onclick="document.getElementById('inp-respaldo').click()">⬆️ Restaurar</button>
+    </div>
+    <input type="file" id="inp-respaldo" accept=".json" style="display:none;" onchange="importarRespaldo(event)">
+    <div style="margin-top:10px;">
+      <button class="btn-d" style="width:100%;" onclick="borrarTodo()">🗑️ Borrar todos los registros</button>
+    </div>
+  </div>
+</div>
+
+<nav>
+  <button class="activa" data-tab="escanear" onclick="irTab('escanear')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M7 12h10"/></svg>
+    Escanear</button>
+  <button data-tab="personas" onclick="irTab('personas')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+    Personas</button>
+  <button data-tab="dashboard" onclick="irTab('dashboard')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+    Dashboard</button>
+  <button data-tab="config" onclick="irTab('config')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h0a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    Config</button>
+</nav>
+
+<div id="toast"></div>
+<div id="hoja-print"></div>
+
+<script>
+/* ================= DATOS ================= */
+const LS = 'enraizamiento_v1';
+let db = { personas: [], registros: [], config: { esquejesPorBandeja: 50, cooldown: 5, finca: '' } };
+
+function cargar(){
+  try{
+    const raw = localStorage.getItem(LS);
+    if(raw){ const d = JSON.parse(raw); db = Object.assign(db, d); db.config = Object.assign({esquejesPorBandeja:50, cooldown:5, finca:''}, d.config||{}); }
+  }catch(e){}
+}
+function guardar(){ localStorage.setItem(LS, JSON.stringify(db)); }
+
+/* ================= UTILIDADES ================= */
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('ver');
+  clearTimeout(t._tm); t._tm = setTimeout(()=>t.classList.remove('ver'), 2200);
+}
+function fmtHora(ts){ return new Date(ts).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}); }
+function fmtFecha(ts){ return new Date(ts).toLocaleDateString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric'}); }
+function inicioDia(d){ const x=new Date(d); x.setHours(0,0,0,0); return x.getTime(); }
+function nuevoCodigo(){
+  let n = db.personas.length + 1;
+  let c;
+  do { c = 'P' + String(n).padStart(3,'0'); n++; } while (db.personas.some(p=>p.codigo===c));
+  return c;
+}
+function personaPorCodigo(c){ return db.personas.find(p=>p.codigo===c); }
+
+/* ================= TABS ================= */
+function irTab(nombre){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('activa'));
+  document.getElementById('tab-'+nombre).classList.add('activa');
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('activa', b.dataset.tab===nombre));
+  if(nombre==='dashboard') renderDashboard();
+  if(nombre==='personas') renderPersonas();
+  if(nombre==='escanear') renderSelManual();
+}
+
+/* ================= PERSONAS ================= */
+function agregarPersona(){
+  const nombre = document.getElementById('inp-nombre').value.trim();
+  let codigo = document.getElementById('inp-codigo').value.trim().toUpperCase();
+  if(!nombre){ toast('Escribe el nombre'); return; }
+  if(!codigo) codigo = nuevoCodigo();
+  if(personaPorCodigo(codigo)){ toast('Ese código ya existe'); return; }
+  db.personas.push({ codigo, nombre, creado: Date.now() });
+  guardar();
+  document.getElementById('inp-nombre').value = '';
+  document.getElementById('inp-codigo').value = '';
+  renderPersonas();
+  toast('✓ ' + nombre + ' agregada (' + codigo + ')');
+}
+function eliminarPersona(codigo){
+  const p = personaPorCodigo(codigo);
+  if(!p) return;
+  if(!confirm('¿Eliminar a ' + p.nombre + '? Sus registros históricos se conservan.')) return;
+  db.personas = db.personas.filter(x=>x.codigo!==codigo);
+  guardar(); renderPersonas();
+}
+function renderPersonas(){
+  const cont = document.getElementById('lista-personas');
+  document.getElementById('cnt-personas').textContent = db.personas.length;
+  cont.innerHTML = '';
+  if(db.personas.length===0){ cont.innerHTML = '<div class="vacio">Aún no hay personas. Agrega la primera arriba.</div>'; return; }
+  db.personas.forEach(p=>{
+    const fila = document.createElement('div');
+    fila.className = 'persona-item';
+    const qrDiv = document.createElement('div'); qrDiv.className = 'qr-mini';
+    const info = document.createElement('div'); info.className = 'info';
+    info.innerHTML = '<div class="n">'+p.nombre+'</div><div class="c">'+p.codigo+'</div>';
+    const btn = document.createElement('button');
+    btn.className = 'btn-d btn-chico'; btn.textContent = '✕';
+    btn.onclick = ()=>eliminarPersona(p.codigo);
+    fila.appendChild(qrDiv); fila.appendChild(info); fila.appendChild(btn);
+    cont.appendChild(fila);
+    new QRCode(qrDiv, { text: p.codigo, width: 52, height: 52, correctLevel: QRCode.CorrectLevel.M });
+  });
+}
+function imprimirCarnets(){
+  if(db.personas.length===0){ toast('No hay personas para imprimir'); return; }
+  const hoja = document.getElementById('hoja-print');
+  hoja.innerHTML = '';
+  db.personas.forEach(p=>{
+    const c = document.createElement('div'); c.className = 'carnet';
+    const qr = document.createElement('div'); qr.className = 'qr-print';
+    c.appendChild(qr);
+    const n = document.createElement('div'); n.className='cn'; n.textContent = p.nombre; c.appendChild(n);
+    const cc = document.createElement('div'); cc.className='cc'; cc.textContent = p.codigo; c.appendChild(cc);
+    if(db.config.finca){ const f = document.createElement('div'); f.className='ct'; f.textContent = db.config.finca; c.appendChild(f); }
+    hoja.appendChild(c);
+    new QRCode(qr, { text: p.codigo, width: 150, height: 150, correctLevel: QRCode.CorrectLevel.M });
+  });
+  setTimeout(()=>window.print(), 400);
+}
+
+/* ================= REGISTRO ================= */
+const ultimoScan = {}; // codigo -> timestamp
+function registrar(codigo, origen){
+  const p = personaPorCodigo(codigo);
+  const res = document.getElementById('res-scan');
+  if(!p){
+    res.className = 'resultado-scan err';
+    document.getElementById('rs-nombre').textContent = 'QR no reconocido';
+    document.getElementById('rs-detalle').textContent = 'Código: ' + codigo;
+    document.getElementById('rs-conteo').textContent = 'Registra a la persona en la pestaña Personas';
+    if(navigator.vibrate) navigator.vibrate([80,60,80]);
+    return;
+  }
+  const ahora = Date.now();
+  const cd = (db.config.cooldown||0) * 1000;
+  if(ultimoScan[codigo] && (ahora - ultimoScan[codigo]) < cd){
+    toast('⏳ Espera, ' + p.nombre + ' ya fue escaneada hace un momento');
+    return;
+  }
+  ultimoScan[codigo] = ahora;
+  const esq = db.config.esquejesPorBandeja;
+  db.registros.push({ ts: ahora, codigo: p.codigo, nombre: p.nombre, esquejes: esq, origen: origen||'qr' });
+  guardar();
+  const hoyIni = inicioDia(ahora);
+  const hoy = db.registros.filter(r=>r.codigo===p.codigo && r.ts>=hoyIni);
+  res.className = 'resultado-scan ok';
+  document.getElementById('rs-nombre').textContent = '✓ ' + p.nombre;
+  document.getElementById('rs-detalle').textContent = '1 bandeja registrada (' + esq + ' esquejes) · ' + fmtHora(ahora);
+  document.getElementById('rs-conteo').textContent = 'Hoy lleva: ' + hoy.length + ' bandejas = ' + hoy.reduce((s,r)=>s+r.esquejes,0) + ' esquejes';
+  if(navigator.vibrate) navigator.vibrate(120);
+}
+function registrarManual(){
+  const sel = document.getElementById('sel-manual');
+  if(!sel.value){ toast('Selecciona una persona'); return; }
+  registrar(sel.value, 'manual');
+}
+function eliminarRegistro(ts){
+  if(!confirm('¿Eliminar este registro?')) return;
+  db.registros = db.registros.filter(r=>r.ts!==ts);
+  guardar(); renderDashboard();
+}
+function renderSelManual(){
+  const sel = document.getElementById('sel-manual');
+  sel.innerHTML = '<option value="">— Seleccionar persona —</option>' +
+    db.personas.map(p=>'<option value="'+p.codigo+'">'+p.nombre+' ('+p.codigo+')</option>').join('');
+}
+
+/* ================= ESCÁNER CÁMARA ================= */
+let scanner = null, escaneando = false;
+async function toggleCamara(){
+  const btn = document.getElementById('btn-camara');
+  if(escaneando){
+    try{ await scanner.stop(); }catch(e){}
+    escaneando = false;
+    btn.textContent = '📷 Iniciar cámara';
+    return;
+  }
+  if(!scanner) scanner = new Html5Qrcode('lector');
+  try{
+    await scanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 220, height: 220 } },
+      (texto)=>{ registrar(texto.trim(), 'qr'); },
+      ()=>{}
+    );
+    escaneando = true;
+    btn.textContent = '⏹️ Detener cámara';
+  }catch(e){
+    toast('No se pudo abrir la cámara. Revisa permisos.');
+  }
+}
+
+/* ============ PISTOLA LECTORA (modo teclado) ============ */
+let bufferPistola = '', tmPistola = null;
+document.addEventListener('keydown', (e)=>{
+  const tag = (document.activeElement && document.activeElement.tagName) || '';
+  if(tag==='INPUT' || tag==='SELECT' || tag==='TEXTAREA') return;
+  if(e.key==='Enter'){
+    if(bufferPistola.length>=2){ registrar(bufferPistola.trim(), 'pistola'); irTab('escanear'); }
+    bufferPistola=''; return;
+  }
+  if(e.key.length===1){ bufferPistola += e.key; }
+  clearTimeout(tmPistola); tmPistola = setTimeout(()=>bufferPistola='', 300);
+});
+
+/* ================= DASHBOARD ================= */
+function rangoPeriodo(){
+  const hoy = inicioDia(Date.now());
+  const dia = 86400000;
+  switch(document.getElementById('sel-periodo').value){
+    case 'hoy': return [hoy, Infinity];
+    case 'ayer': return [hoy-dia, hoy];
+    case 'semana': return [hoy-6*dia, Infinity];
+    case 'mes': return [hoy-29*dia, Infinity];
+    default: return [0, Infinity];
+  }
+}
+function renderDashboard(){
+  const [ini, fin] = rangoPeriodo();
+  const regs = db.registros.filter(r=>r.ts>=ini && r.ts<fin);
+  const esqTotal = regs.reduce((s,r)=>s+r.esquejes,0);
+  const porPersona = {};
+  regs.forEach(r=>{
+    if(!porPersona[r.codigo]) porPersona[r.codigo] = { nombre:r.nombre, bandejas:0, esquejes:0 };
+    porPersona[r.codigo].bandejas++;
+    porPersona[r.codigo].esquejes += r.esquejes;
+  });
+  const lista = Object.values(porPersona).sort((a,b)=>b.bandejas-a.bandejas);
+  document.getElementById('kpi-bandejas').textContent = regs.length;
+  document.getElementById('kpi-esquejes').textContent = esqTotal.toLocaleString('es-CO');
+  document.getElementById('kpi-personas').textContent = lista.length;
+  document.getElementById('kpi-promedio').textContent = lista.length ? (regs.length/lista.length).toFixed(1) : 0;
+  // gráfico de barras
+  const g = document.getElementById('grafico');
+  g.innerHTML = '';
+  if(lista.length===0){ g.innerHTML = '<div class="vacio">Sin registros en este periodo</div>'; }
+  else{
+    const max = lista[0].bandejas;
+    lista.forEach(p=>{
+      const fila = document.createElement('div'); fila.className='barra-fila';
+      fila.innerHTML = '<div class="etiq"><b>'+p.nombre+'</b><span>'+p.bandejas+' band. · '+p.esquejes.toLocaleString('es-CO')+' esq.</span></div>'+
+        '<div class="barra-track"><div class="barra-fill" style="width:'+(p.bandejas/max*100)+'%"></div></div>';
+      g.appendChild(fila);
+    });
+  }
+  // tabla últimos registros
+  const tb = document.getElementById('tabla-registros');
+  tb.innerHTML = '';
+  const ultimos = regs.slice().sort((a,b)=>b.ts-a.ts).slice(0,30);
+  if(ultimos.length===0){ tb.innerHTML = '<tr><td colspan="4" class="vacio">Sin registros</td></tr>'; }
+  ultimos.forEach(r=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>'+fmtFecha(r.ts)+'<br>'+fmtHora(r.ts)+'</td><td>'+r.nombre+'</td><td>'+r.esquejes+'</td>';
+    const td = document.createElement('td');
+    const b = document.createElement('button'); b.className='btn-d btn-chico'; b.textContent='✕';
+    b.onclick = ()=>eliminarRegistro(r.ts);
+    td.appendChild(b); tr.appendChild(td);
+    tb.appendChild(tr);
+  });
+}
+
+/* ================= EXPORTAR ================= */
+function exportarExcel(){
+  if(db.registros.length===0){ toast('No hay registros para exportar'); return; }
+  const wb = XLSX.utils.book_new();
+  // Hoja 1: registros detallados
+  const detalle = db.registros.map(r=>({
+    'Fecha': fmtFecha(r.ts), 'Hora': fmtHora(r.ts), 'Código': r.codigo,
+    'Persona': r.nombre, 'Bandejas': 1, 'Esquejes': r.esquejes, 'Origen': r.origen
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detalle), 'Registros');
+  // Hoja 2: resumen por persona y día
+  const res = {};
+  db.registros.forEach(r=>{
+    const k = fmtFecha(r.ts) + '|' + r.codigo;
+    if(!res[k]) res[k] = { 'Fecha': fmtFecha(r.ts), 'Código': r.codigo, 'Persona': r.nombre, 'Bandejas': 0, 'Esquejes': 0 };
+    res[k]['Bandejas']++; res[k]['Esquejes'] += r.esquejes;
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.values(res)), 'Resumen diario');
+  const nombre = (db.config.finca ? db.config.finca.replace(/\s+/g,'_') + '_' : '') + 'enraizamiento_' + new Date().toISOString().slice(0,10) + '.xlsx';
+  XLSX.writeFile(wb, nombre);
+  toast('✓ Excel descargado');
+}
+function exportarRespaldo(){
+  const blob = new Blob([JSON.stringify(db)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'respaldo_enraizamiento_' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function importarRespaldo(ev){
+  const f = ev.target.files[0];
+  if(!f) return;
+  const lector = new FileReader();
+  lector.onload = ()=>{
+    try{
+      const d = JSON.parse(lector.result);
+      if(!d.personas || !d.registros) throw new Error('formato');
+      db = Object.assign({config:{esquejesPorBandeja:50,cooldown:5,finca:''}}, d);
+      guardar(); cargarConfigUI(); renderPersonas(); renderSelManual(); renderDashboard();
+      toast('✓ Respaldo restaurado');
+    }catch(e){ toast('Archivo no válido'); }
+  };
+  lector.readAsText(f);
+  ev.target.value = '';
+}
+function borrarTodo(){
+  if(!confirm('¿Borrar TODOS los registros de escaneo? Las personas y la configuración se conservan.')) return;
+  if(!confirm('Esta acción no se puede deshacer. ¿Confirmas? Descarga un respaldo primero si tienes dudas.')) return;
+  db.registros = [];
+  guardar(); renderDashboard();
+  toast('Registros borrados');
+}
+
+/* ================= CONFIG ================= */
+function cargarConfigUI(){
+  document.getElementById('cfg-esquejes').value = db.config.esquejesPorBandeja;
+  document.getElementById('cfg-cooldown').value = db.config.cooldown;
+  document.getElementById('cfg-finca').value = db.config.finca || '';
+  document.getElementById('info-esq').textContent = db.config.esquejesPorBandeja;
+}
+function guardarConfig(){
+  const e = parseInt(document.getElementById('cfg-esquejes').value);
+  const c = parseInt(document.getElementById('cfg-cooldown').value);
+  if(!e || e<1){ toast('Esquejes por bandeja debe ser al menos 1'); return; }
+  db.config.esquejesPorBandeja = e;
+  db.config.cooldown = isNaN(c)||c<0 ? 0 : c;
+  db.config.finca = document.getElementById('cfg-finca').value.trim();
+  guardar(); cargarConfigUI();
+  toast('✓ Configuración guardada');
+}
+
+/* ================= INICIO ================= */
+cargar();
+cargarConfigUI();
+renderPersonas();
+renderSelManual();
+document.getElementById('fecha-hoy').textContent = new Date().toLocaleDateString('es-CO',{weekday:'short', day:'numeric', month:'short'});
+document.getElementById('btn-camara').onclick = toggleCamara;
+</script>
+</body>
+</html>
