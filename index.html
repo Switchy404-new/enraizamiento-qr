@@ -132,6 +132,11 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
     <div style="margin-top:12px;">
       <button class="btn-p" onclick="agregarPersona()">＋ Agregar y generar QR</button>
     </div>
+    <div style="margin-top:8px;">
+      <button class="btn-s" style="width:100%;" onclick="document.getElementById('inp-excel').click()">📥 Cargar personas desde Excel</button>
+      <input type="file" id="inp-excel" accept=".xlsx,.xls,.csv" style="display:none;" onchange="importarExcel(event)">
+      <div style="font-size:12px; color:var(--texto2); margin-top:6px;">Columna A: nombre · Columna B: código (opcional; si va vacía se asignan números 1, 2, 3…)</div>
+    </div>
   </div>
   <div class="card">
     <h2>Personas registradas (<span id="cnt-personas">0</span>)</h2>
@@ -307,6 +312,38 @@ function renderPersonas(){
     new QRCode(qrDiv, { text: p.codigo, width: 52, height: 52, correctLevel: QRCode.CorrectLevel.M });
   });
 }
+function siguienteCodigoNum(){
+  let n = 1;
+  while(db.personas.some(p=>p.codigo===String(n))) n++;
+  return String(n);
+}
+function importarExcel(ev){
+  const f = ev.target.files[0];
+  if(!f) return;
+  const lector = new FileReader();
+  lector.onload = ()=>{
+    try{
+      const wb = XLSX.read(lector.result, {type:'array'});
+      const hoja = wb.Sheets[wb.SheetNames[0]];
+      const filas = XLSX.utils.sheet_to_json(hoja, {header:1, defval:''});
+      let agregadas = 0, omitidas = 0;
+      filas.forEach(fila=>{
+        const nombre = String(fila[0]||'').trim();
+        let codigo = String(fila[1]||'').trim().toUpperCase();
+        if(!nombre) return;
+        if(/^(nombre|persona)/i.test(nombre) && /^c(ó|o)digo/i.test(codigo)) return; // fila de encabezado
+        if(!codigo) codigo = siguienteCodigoNum();
+        if(personaPorCodigo(codigo) || db.personas.some(p=>p.nombre.toLowerCase()===nombre.toLowerCase())){ omitidas++; return; }
+        db.personas.push({ codigo, nombre, creado: Date.now() });
+        agregadas++;
+      });
+      guardar(); renderPersonas(); renderSelManual();
+      toast('✓ ' + agregadas + ' personas cargadas' + (omitidas ? ' · ' + omitidas + ' repetidas omitidas' : ''));
+    }catch(e){ toast('No se pudo leer el archivo'); }
+  };
+  lector.readAsArrayBuffer(f);
+  ev.target.value = '';
+}
 function imprimirCarnets(){
   if(db.personas.length===0){ toast('No hay personas para imprimir'); return; }
   const hoja = document.getElementById('hoja-print');
@@ -402,7 +439,7 @@ document.addEventListener('keydown', (e)=>{
   const tag = (document.activeElement && document.activeElement.tagName) || '';
   if(tag==='INPUT' || tag==='SELECT' || tag==='TEXTAREA') return;
   if(e.key==='Enter'){
-    if(bufferPistola.length>=2){ registrar(bufferPistola.trim(), 'pistola'); irTab('escanear'); }
+    if(bufferPistola.length>=1){ registrar(bufferPistola.trim(), 'pistola'); irTab('escanear'); }
     bufferPistola=''; return;
   }
   if(e.key.length===1){ bufferPistola += e.key; }
