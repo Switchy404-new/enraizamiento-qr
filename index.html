@@ -171,6 +171,10 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
     <input type="text" id="inp-nombre" placeholder="Ej: María González">
     <label>Código (opcional, se genera solo)</label>
     <input type="text" id="inp-codigo" placeholder="Ej: P001">
+    <div style="margin-top:8px;">
+      <button class="btn-s" style="width:100%;" onclick="abrirEscaneoCodigo()">📷 Escanear un QR existente para el código</button>
+      <div style="font-size:12px; color:var(--texto2); margin-top:4px;">Útil para asignar stickers QR ya impresos. También puedes tocar el campo Código y disparar la lectora.</div>
+    </div>
     <div style="margin-top:12px;">
       <button class="btn-p" onclick="agregarPersona()">＋ Agregar y generar QR</button>
     </div>
@@ -326,6 +330,18 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
     <div class="fila-botones">
       <button class="btn-s" onclick="cerrarModal()">Cancelar</button>
       <button class="btn-p" style="width:auto;" onclick="confirmarCorte()">✓ Registrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal para escanear el código de un QR existente -->
+<div class="modal-fondo" id="modal-codigo">
+  <div class="modal-card">
+    <div class="nombre">Escanea el QR del sticker</div>
+    <div style="font-size:13px; color:var(--texto2); text-align:center; margin:4px 0 10px;">Apunta al código impreso; se copiará al campo Código.</div>
+    <div id="lector-add" style="border-radius:12px; overflow:hidden; background:#000; min-height:220px;"></div>
+    <div class="fila-botones">
+      <button class="btn-s" style="width:100%;" onclick="cerrarEscaneoCodigo()">Cancelar</button>
     </div>
   </div>
 </div>
@@ -723,6 +739,35 @@ function renderSelManual(){
 }
 
 /* ================= ESCÁNER CÁMARA ================= */
+/* Escaneo de código para asignar a una persona (QR ya impreso) */
+let scannerAdd = null, escaneandoAdd = false;
+async function abrirEscaneoCodigo(){
+  document.getElementById('modal-codigo').classList.add('ver');
+  if(!scannerAdd) scannerAdd = new Html5Qrcode('lector-add');
+  try{
+    escaneandoAdd = true;
+    await scannerAdd.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 200, height: 200 } },
+      (texto)=>{
+        document.getElementById('inp-codigo').value = texto.trim().toUpperCase();
+        if(navigator.vibrate) navigator.vibrate(120);
+        cerrarEscaneoCodigo();
+        toast('✓ Código escaneado: ' + texto.trim());
+      },
+      ()=>{}
+    );
+  }catch(e){
+    escaneandoAdd = false;
+    document.getElementById('modal-codigo').classList.remove('ver');
+    toast('No se pudo abrir la cámara. Revisa permisos.');
+  }
+}
+async function cerrarEscaneoCodigo(){
+  if(escaneandoAdd){ try{ await scannerAdd.stop(); }catch(e){} escaneandoAdd = false; }
+  document.getElementById('modal-codigo').classList.remove('ver');
+}
+
 let scanner = null, escaneando = false;
 function mostrarCamara(){
   document.getElementById('listo-lectora').style.display = 'none';
