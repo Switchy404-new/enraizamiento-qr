@@ -139,7 +139,7 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
         <div class="lectora-txt" id="lectora-txt">Listo para leer con la lectora</div>
         <div class="lectora-sub" id="lectora-sub">Dispara la pistola sobre el QR. Se registra automáticamente.</div>
         <input id="scan-input" inputmode="none" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-          placeholder="Esperando lectura…" onkeydown="scanKeydown(event)" oninput="scanInput()" onblur="scanBlur()">
+          placeholder="Esperando lectura…" readonly>
         <div class="scan-diag" id="scan-diag"></div>
       </div>
       <div style="margin-top:10px;">
@@ -650,9 +650,11 @@ let pendienteCorte = null; // {codigo, origen} mientras el modal está abierto
 function mostrarError(codigo){
   const res = document.getElementById('res-scan');
   res.className = 'resultado-scan err';
-  document.getElementById('rs-nombre').textContent = 'QR no reconocido';
-  document.getElementById('rs-detalle').textContent = 'Código: ' + codigo + ' · Módulo: ' + MODS[db.mod];
-  document.getElementById('rs-conteo').textContent = 'Registra a la persona en la pestaña Personas';
+  document.getElementById('rs-nombre').textContent = 'No reconocido';
+  document.getElementById('rs-detalle').textContent = 'Leí: "' + codigo + '" (' + String(codigo).length + ' dígitos) · Módulo: ' + MODS[db.mod];
+  const n = M().personas.length;
+  const conCed = M().personas.filter(p=>p.doc && String(p.doc).trim()).length;
+  document.getElementById('rs-conteo').textContent = 'Ninguna de las ' + n + ' personas (con cédula: ' + conCed + ') tiene ese número. Cárgalo en Personas.';
   if(navigator.vibrate) navigator.vibrate([80,60,80]);
 }
 function enCooldown(codigo){
@@ -827,9 +829,9 @@ async function toggleCamara(){
 // La lectora "escribe" el código en este campo enfocado y termina con Enter.
 // Es el método más confiable en celulares y PC (no depende de escuchar el teclado global).
 function scanActivo(){
-  // solo tiene sentido enfocar si estamos en Escanear, en modo lectora (cámara oculta) y sin modales abiertos
   const enEscanear = document.getElementById('tab-escanear').classList.contains('activa');
-  const camaraOculta = document.getElementById('zona-camara').style.display === 'none' || document.getElementById('zona-camara').style.display === '';
+  const zc = document.getElementById('zona-camara').style.display;
+  const camaraOculta = zc === 'none' || zc === '';
   const modalCorte = document.getElementById('modal-corte').classList.contains('ver');
   const modalCodigo = document.getElementById('modal-codigo').classList.contains('ver');
   return enEscanear && camaraOculta && !modalCorte && !modalCodigo;
@@ -837,63 +839,42 @@ function scanActivo(){
 function focoScan(){
   if(!scanActivo()) return;
   const inp = document.getElementById('scan-input');
-  inp.value = '';
-  try{ inp.focus({preventScroll:true}); }catch(e){ inp.focus(); }
-  document.querySelector('.lectora-box').classList.remove('sin-foco');
-  document.getElementById('lectora-txt').textContent = 'Listo para leer con la lectora';
-  document.getElementById('lectora-sub').textContent = 'Dispara la pistola sobre el QR. Se registra automáticamente.';
-}
-function scanBlur(){
-  // si el foco se perdió y seguimos en modo lectora, avisar para que toque y reactive
-  setTimeout(()=>{
-    if(!scanActivo()) return;
-    if(document.activeElement && document.activeElement.id==='scan-input') return;
-    document.querySelector('.lectora-box').classList.add('sin-foco');
-    document.getElementById('lectora-txt').textContent = '⚠️ Toca aquí para activar la lectora';
-    document.getElementById('lectora-sub').textContent = 'El campo de lectura perdió el foco. Tócalo y vuelve a disparar.';
-  }, 100);
-}
-let scanTimer = null;
-function procesarScan(){
-  clearTimeout(scanTimer);
-  const inp = document.getElementById('scan-input');
-  const codigo = inp.value.trim();
-  inp.value = '';
-  document.getElementById('scan-diag').textContent = codigo ? ('Última lectura: ' + codigo) : '';
-  if(codigo.length >= 1){ registrar(codigo, 'pistola'); }
-  setTimeout(focoScan, 50);
-}
-function scanKeydown(e){
-  // muestra que sí están llegando teclas (diagnóstico)
-  if(e.key && e.key.length === 1){
-    document.getElementById('scan-diag').textContent = 'Recibiendo… ' + (document.getElementById('scan-input').value + e.key);
+  if(inp){ inp.value = ''; try{ inp.focus({preventScroll:true}); }catch(e){} }
+  const box = document.querySelector('.lectora-box'); if(box) box.classList.remove('sin-foco');
+  const sub = document.getElementById('lectora-sub');
+  if(sub){
+    const n = M().personas.length;
+    const conCed = M().personas.filter(p=>p.doc && String(p.doc).trim()).length;
+    sub.textContent = 'Dispara la pistola. Personas cargadas: ' + n + ' · con cédula: ' + conCed;
   }
-  if(e.key === 'Enter' || e.key === 'Tab'){ e.preventDefault(); procesarScan(); }
 }
-function scanInput(){
-  // auto-registro para lectoras que NO envían Enter: si deja de llegar texto ~200ms, se procesa
-  const inp = document.getElementById('scan-input');
-  document.getElementById('scan-diag').textContent = 'Recibiendo… ' + inp.value;
-  clearTimeout(scanTimer);
-  scanTimer = setTimeout(procesarScan, 200);
-}
+function scanBlur(){}
 
-/* Fallback: teclado global (por si la lectora escribe sin campo enfocado) */
-let bufferPistola = '', tmPistola = null;
+/* ===== Captura unificada de la lectora =====
+   Funciona con el campo enfocado o sin foco. Junta las teclas y registra
+   al recibir Enter (o tras una pausa, por si la lectora no manda Enter). */
+let scanBuf = '', scanTmr = null;
+function scanEcho(txt){ const d = document.getElementById('scan-diag'); if(d) d.textContent = txt; }
+function scanCommit(){
+  clearTimeout(scanTmr);
+  const cod = scanBuf.trim(); scanBuf = '';
+  const inp = document.getElementById('scan-input'); if(inp) inp.value = '';
+  if(cod.length >= 1){ scanEcho('Última lectura: ' + cod + ' (' + cod.length + ' dígitos)'); registrar(cod, 'pistola'); }
+  setTimeout(focoScan, 60);
+}
 document.addEventListener('keydown', (e)=>{
-  const tag = (document.activeElement && document.activeElement.tagName) || '';
-  if(tag==='INPUT' || tag==='SELECT' || tag==='TEXTAREA') return;
-  const diag = document.getElementById('scan-diag');
-  if(e.key==='Enter' || e.key==='Tab'){
-    if(bufferPistola.length>=1){ if(diag) diag.textContent='Última lectura: '+bufferPistola.trim(); registrar(bufferPistola.trim(), 'pistola'); irTab('escanear'); setTimeout(focoScan, 50); }
-    bufferPistola=''; return;
+  const ae = document.activeElement, tag = ae && ae.tagName, id = ae && ae.id;
+  // si el usuario está escribiendo en OTRO campo (nombre, cédula, ramos…), no capturar
+  if((tag==='INPUT' || tag==='SELECT' || tag==='TEXTAREA') && id !== 'scan-input') return;
+  if(!scanActivo()) return;
+  if(e.key === 'Enter' || e.key === 'Tab'){ e.preventDefault(); scanCommit(); return; }
+  if(e.key && e.key.length === 1){
+    e.preventDefault();
+    scanBuf += e.key;
+    scanEcho('Recibiendo… ' + scanBuf);
+    clearTimeout(scanTmr);
+    scanTmr = setTimeout(scanCommit, 150); // por si la lectora no manda Enter
   }
-  if(e.key.length===1){ bufferPistola += e.key; if(diag) diag.textContent='Recibiendo (global)… '+bufferPistola; }
-  clearTimeout(tmPistola); tmPistola = setTimeout(()=>{
-    // si la lectora no manda Enter, registrar por pausa
-    if(bufferPistola.length>=2){ if(diag) diag.textContent='Última lectura: '+bufferPistola.trim(); registrar(bufferPistola.trim(), 'pistola'); irTab('escanear'); setTimeout(focoScan, 50); }
-    bufferPistola='';
-  }, 250);
 });
 
 /* ================= DASHBOARD ================= */
