@@ -100,6 +100,12 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
   .carnet .qr-print{line-height:0;}
   .carnet .cn{font-weight:700; line-height:1.1;}
   .carnet .cc{color:#000;}
+  /* Modo rollo: una etiqueta por página, QR a la izquierda y texto a la derecha */
+  #hoja-print.rollo{display:block!important; padding:0!important;}
+  #hoja-print.rollo .carnet{flex-direction:row; gap:2mm; padding:1mm 2mm; page-break-after:always;}
+  #hoja-print.rollo .carnet .qr-print{flex-shrink:0;}
+  #hoja-print.rollo .carnet .txt-print{text-align:left; overflow:hidden;}
+  #hoja-print.rollo .carnet .cn{word-break:break-word;}
 }
 @page{ margin:0; }
 </style>
@@ -251,16 +257,21 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
   </div>
   <div class="card">
     <h2>Impresión de etiquetas QR (stickers)</h2>
-    <div style="font-size:12px; color:var(--texto2);">Compartido entre módulos. Mide tus stickers con una regla, en milímetros. Haz una impresión de prueba en papel normal y ponla encima de la lámina a contraluz para verificar antes de usar los stickers.</div>
+    <label>Tipo de impresora</label>
+    <select id="et-tipo" onchange="toggleTipoImpresion()">
+      <option value="hoja">Hoja de stickers (cuadrícula)</option>
+      <option value="rollo">Rollo / etiquetadora (una por etiqueta)</option>
+    </select>
+    <div style="font-size:12px; color:var(--texto2); margin-top:8px;" id="et-ayuda"></div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 10px;">
-      <div><label>Etiquetas por fila</label><input type="number" id="et-cols" min="1" inputmode="numeric"></div>
-      <div><label>Tamaño del QR (% de la etiqueta)</label><input type="number" id="et-qr" min="30" max="90" inputmode="numeric"></div>
       <div><label>Ancho de etiqueta (mm)</label><input type="number" id="et-ancho" min="10" step="0.5" inputmode="decimal"></div>
       <div><label>Alto de etiqueta (mm)</label><input type="number" id="et-alto" min="10" step="0.5" inputmode="decimal"></div>
-      <div><label>Separación horizontal (mm)</label><input type="number" id="et-gh" min="0" step="0.5" inputmode="decimal"></div>
-      <div><label>Separación vertical (mm)</label><input type="number" id="et-gv" min="0" step="0.5" inputmode="decimal"></div>
-      <div><label>Margen superior (mm)</label><input type="number" id="et-mt" min="0" step="0.5" inputmode="decimal"></div>
-      <div><label>Margen izquierdo (mm)</label><input type="number" id="et-ml" min="0" step="0.5" inputmode="decimal"></div>
+      <div><label>Tamaño del QR (% de la etiqueta)</label><input type="number" id="et-qr" min="30" max="90" inputmode="numeric"></div>
+      <div class="solo-hoja"><label>Etiquetas por fila</label><input type="number" id="et-cols" min="1" inputmode="numeric"></div>
+      <div class="solo-hoja"><label>Separación horizontal (mm)</label><input type="number" id="et-gh" min="0" step="0.5" inputmode="decimal"></div>
+      <div class="solo-hoja"><label>Separación vertical (mm)</label><input type="number" id="et-gv" min="0" step="0.5" inputmode="decimal"></div>
+      <div class="solo-hoja"><label>Margen superior (mm)</label><input type="number" id="et-mt" min="0" step="0.5" inputmode="decimal"></div>
+      <div class="solo-hoja"><label>Margen izquierdo (mm)</label><input type="number" id="et-ml" min="0" step="0.5" inputmode="decimal"></div>
     </div>
     <div style="margin-top:12px;">
       <button class="btn-p" onclick="guardarEtiquetas()">💾 Guardar ajustes de impresión</button>
@@ -318,7 +329,8 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
 /* ================= DATOS ================= */
 const LS = 'cultivo_v2';
 const LS_V1 = 'enraizamiento_v1';
-const ETIQ_DEF = { cols: 4, ancho: 30, alto: 25, gh: 3, gv: 3, mt: 5, ml: 5, qr: 62 };
+const ETIQ_DEF = { tipo: 'hoja', cols: 4, ancho: 30, alto: 25, gh: 3, gv: 3, mt: 5, ml: 5, qr: 62 };
+const ROLLO_DEF = { ancho: 100, alto: 27, qr: 80 };
 const MODS = { enr: 'Enraizamiento', cor: 'Corte' };
 
 let db = {
@@ -524,18 +536,32 @@ function importarExcel(ev){
 function imprimirCarnets(){
   if(M().personas.length===0){ toast('No hay personas para imprimir'); return; }
   const e = Object.assign({}, ETIQ_DEF, db.etiq||{});
+  const rollo = e.tipo === 'rollo';
   const qrmm = Math.min(e.ancho, e.alto) * (e.qr/100);
-  const fs = Math.max(3.5, Math.min(8, e.ancho/6));
   let st = document.getElementById('estilo-print');
   if(!st){ st = document.createElement('style'); st.id = 'estilo-print'; document.head.appendChild(st); }
-  st.textContent = '@media print{'+
-    '#hoja-print{grid-template-columns:repeat('+e.cols+','+e.ancho+'mm); column-gap:'+e.gh+'mm; row-gap:'+e.gv+'mm; padding:'+e.mt+'mm 0 0 '+e.ml+'mm;}'+
-    '.carnet{width:'+e.ancho+'mm; height:'+e.alto+'mm;}'+
-    '.carnet .qr-print img,.carnet .qr-print canvas{width:'+qrmm+'mm!important; height:'+qrmm+'mm!important;}'+
-    '.carnet .cn{font-size:'+fs+'pt;}'+
-    '.carnet .cc{font-size:'+fs+'pt;}'+
-    '}';
   const hoja = document.getElementById('hoja-print');
+  if(rollo){
+    // Una etiqueta por página, tamaño exacto del rollo. QR a la izquierda, nombre y código a la derecha.
+    const fs = Math.max(6, Math.min(13, e.alto/2.4));
+    st.textContent = '@page{ size:'+e.ancho+'mm '+e.alto+'mm; margin:0; }@media print{'+
+      '#hoja-print.rollo .carnet{width:'+e.ancho+'mm; height:'+e.alto+'mm;}'+
+      '#hoja-print.rollo .carnet .qr-print img,#hoja-print.rollo .carnet .qr-print canvas{width:'+qrmm+'mm!important; height:'+qrmm+'mm!important;}'+
+      '#hoja-print.rollo .carnet .cn{font-size:'+fs+'pt;}'+
+      '#hoja-print.rollo .carnet .cc{font-size:'+(fs*0.85)+'pt;}'+
+      '}';
+    hoja.className = 'rollo';
+  } else {
+    const fs = Math.max(3.5, Math.min(8, e.ancho/6));
+    st.textContent = '@page{ margin:0; }@media print{'+
+      '#hoja-print{grid-template-columns:repeat('+e.cols+','+e.ancho+'mm); column-gap:'+e.gh+'mm; row-gap:'+e.gv+'mm; padding:'+e.mt+'mm 0 0 '+e.ml+'mm;}'+
+      '.carnet{width:'+e.ancho+'mm; height:'+e.alto+'mm;}'+
+      '.carnet .qr-print img,.carnet .qr-print canvas{width:'+qrmm+'mm!important; height:'+qrmm+'mm!important;}'+
+      '.carnet .cn{font-size:'+fs+'pt;}'+
+      '.carnet .cc{font-size:'+fs+'pt;}'+
+      '}';
+    hoja.className = '';
+  }
   hoja.innerHTML = '';
   let total = 0;
   M().personas.forEach(p=>{
@@ -544,15 +570,22 @@ function imprimirCarnets(){
       const c = document.createElement('div'); c.className = 'carnet';
       const qr = document.createElement('div'); qr.className = 'qr-print';
       c.appendChild(qr);
-      const n = document.createElement('div'); n.className='cn'; n.textContent = p.nombre; c.appendChild(n);
-      const cc = document.createElement('div'); cc.className='cc'; cc.textContent = p.codigo; c.appendChild(cc);
+      if(rollo){
+        const txt = document.createElement('div'); txt.className = 'txt-print';
+        const n = document.createElement('div'); n.className='cn'; n.textContent = p.nombre; txt.appendChild(n);
+        const cc = document.createElement('div'); cc.className='cc'; cc.textContent = p.codigo; txt.appendChild(cc);
+        c.appendChild(txt);
+      } else {
+        const n = document.createElement('div'); n.className='cn'; n.textContent = p.nombre; c.appendChild(n);
+        const cc = document.createElement('div'); cc.className='cc'; cc.textContent = p.codigo; c.appendChild(cc);
+      }
       hoja.appendChild(c);
       new QRCode(qr, { text: p.codigo, width: 150, height: 150, correctLevel: QRCode.CorrectLevel.M });
       total++;
     }
   });
   if(total===0){ toast('Todas las personas tienen 0 copias'); return; }
-  toast('Imprimiendo ' + total + ' stickers…');
+  toast('Imprimiendo ' + total + ' etiquetas…');
   setTimeout(()=>window.print(), 400);
 }
 
@@ -879,6 +912,7 @@ function cargarConfigUI(){
   document.getElementById('cfg-finca').value = db.finca || '';
   db.etiq = Object.assign({}, ETIQ_DEF, db.etiq||{});
   const e = db.etiq;
+  document.getElementById('et-tipo').value = e.tipo || 'hoja';
   document.getElementById('et-cols').value = e.cols;
   document.getElementById('et-qr').value = e.qr;
   document.getElementById('et-ancho').value = e.ancho;
@@ -887,6 +921,14 @@ function cargarConfigUI(){
   document.getElementById('et-gv').value = e.gv;
   document.getElementById('et-mt').value = e.mt;
   document.getElementById('et-ml').value = e.ml;
+  toggleTipoImpresion();
+}
+function toggleTipoImpresion(){
+  const rollo = document.getElementById('et-tipo').value === 'rollo';
+  document.querySelectorAll('.solo-hoja').forEach(el=>el.style.display = rollo ? 'none' : 'block');
+  document.getElementById('et-ayuda').innerHTML = rollo
+    ? 'Rollo/etiquetadora: se imprime <b>una etiqueta por página</b>, con el QR a la izquierda y el nombre a la derecha. Pon el ancho y alto exactos de tu etiqueta (ej: 100 × 27 mm). En el diálogo de impresión elige tu etiquetadora, tamaño de papel igual a la etiqueta y márgenes en Ninguno.'
+    : 'Hoja de stickers: se imprime en cuadrícula. Mide tus stickers con regla en milímetros. Haz una prueba en papel normal y ponla sobre la lámina a contraluz antes de usar los stickers.';
 }
 function guardarConfig(){
   const c = parseInt(document.getElementById('cfg-cooldown').value);
@@ -911,6 +953,7 @@ function guardarEtiquetas(){
   const g = id => parseFloat(document.getElementById(id).value);
   const num = (v, def) => isNaN(v) || v < 0 ? def : v;
   db.etiq = {
+    tipo: document.getElementById('et-tipo').value === 'rollo' ? 'rollo' : 'hoja',
     cols: Math.max(1, Math.round(num(g('et-cols'), ETIQ_DEF.cols))),
     ancho: Math.max(10, num(g('et-ancho'), ETIQ_DEF.ancho)),
     alto: Math.max(10, num(g('et-alto'), ETIQ_DEF.alto)),
