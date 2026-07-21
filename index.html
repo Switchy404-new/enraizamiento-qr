@@ -40,6 +40,14 @@ nav{position:fixed; bottom:0; left:0; right:0; background:#fff; display:flex; bo
 nav button{flex:1; background:none; padding:9px 4px; border-radius:0; font-size:11px; font-weight:500; color:var(--texto2); display:flex; flex-direction:column; align-items:center; gap:2px;}
 nav button.activa{color:var(--verde);}
 nav button svg{width:23px; height:23px;}
+/* Lectora lista */
+.lectora-box{background:var(--verde-claro); border:2px dashed var(--verde); border-radius:var(--radius); padding:22px 16px; text-align:center;}
+.lectora-pulso{width:54px; height:54px; margin:0 auto 12px; border-radius:50%; background:var(--verde); position:relative; display:flex; align-items:center; justify-content:center;}
+.lectora-pulso::after{content:''; position:absolute; inset:0; border-radius:50%; background:var(--verde); animation:pulso 1.8s ease-out infinite;}
+.lectora-pulso::before{content:'⌨'; font-size:26px; color:#fff; z-index:1;}
+@keyframes pulso{0%{transform:scale(1); opacity:.6;} 100%{transform:scale(2.1); opacity:0;}}
+.lectora-txt{font-size:16px; font-weight:700; color:var(--verde-osc);}
+.lectora-sub{font-size:13px; color:var(--texto2); margin-top:4px;}
 /* Escáner */
 #lector{border-radius:var(--radius); overflow:hidden; background:#000; min-height:230px;}
 #lector video{border-radius:var(--radius);}
@@ -113,9 +121,22 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
 <div class="tab activa" id="tab-escanear">
   <div class="card">
     <h2>Escanear QR de la persona</h2>
-    <div id="lector"></div>
-    <div style="margin-top:10px;">
-      <button class="btn-p" id="btn-camara">📷 Iniciar cámara</button>
+    <div id="listo-lectora">
+      <div class="lectora-box">
+        <div class="lectora-pulso"></div>
+        <div class="lectora-txt">Listo para leer con la lectora</div>
+        <div class="lectora-sub">Dispara la pistola sobre el QR. Se registra automáticamente.</div>
+      </div>
+      <div style="margin-top:10px;">
+        <button class="btn-s" style="width:100%;" onclick="mostrarCamara()">📷 Usar cámara en su lugar</button>
+      </div>
+    </div>
+    <div id="zona-camara" style="display:none;">
+      <div id="lector"></div>
+      <div class="fila-botones">
+        <button class="btn-p" id="btn-camara">📷 Iniciar cámara</button>
+        <button class="btn-s" onclick="ocultarCamara()">⌨️ Volver a lectora</button>
+      </div>
     </div>
     <div class="resultado-scan" id="res-scan">
       <div class="nombre" id="rs-nombre"></div>
@@ -652,6 +673,15 @@ function renderSelManual(){
 
 /* ================= ESCÁNER CÁMARA ================= */
 let scanner = null, escaneando = false;
+function mostrarCamara(){
+  document.getElementById('listo-lectora').style.display = 'none';
+  document.getElementById('zona-camara').style.display = 'block';
+}
+async function ocultarCamara(){
+  if(escaneando){ try{ await scanner.stop(); }catch(e){} escaneando = false; document.getElementById('btn-camara').textContent = '📷 Iniciar cámara'; }
+  document.getElementById('zona-camara').style.display = 'none';
+  document.getElementById('listo-lectora').style.display = 'block';
+}
 async function toggleCamara(){
   const btn = document.getElementById('btn-camara');
   if(escaneando){
