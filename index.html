@@ -177,19 +177,17 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
     <h2>Agregar persona <span id="pers-mod" style="font-weight:400;"></span></h2>
     <label>Nombre completo</label>
     <input type="text" id="inp-nombre" placeholder="Ej: María González">
-    <label>Código (opcional, se genera solo)</label>
-    <input type="text" id="inp-codigo" placeholder="Ej: P001">
-    <div style="margin-top:8px;">
-      <button class="btn-s" style="width:100%;" onclick="abrirEscaneoCodigo()">📷 Escanear un QR existente para el código</button>
-      <div style="font-size:12px; color:var(--texto2); margin-top:4px;">Útil para asignar stickers QR ya impresos. También puedes tocar el campo Código y disparar la lectora.</div>
-    </div>
+    <label>Cédula / Documento (va en el QR)</label>
+    <input type="text" id="inp-doc" inputmode="numeric" placeholder="Ej: 100399318">
+    <input type="hidden" id="inp-codigo">
+    <div style="font-size:12px; color:var(--texto2); margin-top:4px;">El QR lleva la cédula. La lectora la reconoce igual de bien que un número corto.</div>
     <div style="margin-top:12px;">
       <button class="btn-p" onclick="agregarPersona()">＋ Agregar y generar QR</button>
     </div>
     <div style="margin-top:8px;">
       <button class="btn-s" style="width:100%;" onclick="document.getElementById('inp-excel').click()">📥 Cargar personas desde Excel</button>
       <input type="file" id="inp-excel" accept=".xlsx,.xls,.csv" style="display:none;" onchange="importarExcel(event)">
-      <div style="font-size:12px; color:var(--texto2); margin-top:6px;">Columna A: nombre · Columna B: código (opcional; si va vacía se asignan números 1, 2, 3…)</div>
+      <div style="font-size:12px; color:var(--texto2); margin-top:6px;">Columna A: nombre · Columna B: cédula/documento (opcional) · Columna C: código del QR (opcional; si va vacía se asignan números cortos 1, 2, 3…)</div>
     </div>
   </div>
   <div class="card">
@@ -361,7 +359,7 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
 /* ================= DATOS ================= */
 const LS = 'cultivo_v2';
 const LS_V1 = 'enraizamiento_v1';
-const ETIQ_DEF = { tipo: 'hoja', cols: 4, ancho: 30, alto: 25, gh: 3, gv: 3, mt: 5, ml: 5, qr: 62, rcols: 2, rrows: 7, rpapel: 203, rgh: 3, rgv: 3, rmt: 0, rml: 0 };
+const ETIQ_DEF = { tipo: 'hoja', qrcontent: 'cedula', cols: 4, ancho: 30, alto: 25, gh: 3, gv: 3, mt: 5, ml: 5, qr: 62, rcols: 2, rrows: 7, rpapel: 203, rgh: 3, rgv: 3, rmt: 0, rml: 0 };
 const ROLLO_DEF = { rcols: 2, rrows: 7, rpapel: 203, rgh: 3, rgv: 3, rmt: 0, rml: 0 };
 const MODS = { enr: 'Enraizamiento', cor: 'Corte' };
 
@@ -431,7 +429,17 @@ function toast(msg){
 function fmtHora(ts){ return new Date(ts).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}); }
 function fmtFecha(ts){ return new Date(ts).toLocaleDateString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric'}); }
 function inicioDia(d){ const x=new Date(d); x.setHours(0,0,0,0); return x.getTime(); }
-function personaPorCodigo(c){ return M().personas.find(p=>p.codigo===c); }
+function personaPorCodigo(c){
+  const v = String(c==null ? '' : c).trim();
+  if(!v) return undefined;
+  // reconoce por código corto O por cédula/documento (así funciona escanees lo que escanees)
+  return M().personas.find(p=> p.codigo===v || (p.doc && String(p.doc).trim()===v));
+}
+function qrTexto(p){
+  // qué contenido lleva el QR: cédula (si existe y así está configurado) o el código corto
+  const modo = (db.etiq && db.etiq.qrcontent) || 'cedula';
+  return (modo==='cedula' && p.doc && String(p.doc).trim()) ? String(p.doc).trim() : p.codigo;
+}
 function nuevoCodigo(){
   let n = M().personas.length + 1;
   let c;
@@ -485,16 +493,18 @@ function irTab(nombre){
 /* ================= PERSONAS ================= */
 function agregarPersona(){
   const nombre = document.getElementById('inp-nombre').value.trim();
+  const doc = document.getElementById('inp-doc').value.trim();
   let codigo = document.getElementById('inp-codigo').value.trim().toUpperCase();
   if(!nombre){ toast('Escribe el nombre'); return; }
-  if(!codigo) codigo = nuevoCodigo();
+  if(!codigo) codigo = siguienteCodigoNum();
   if(personaPorCodigo(codigo)){ toast('Ese código ya existe'); return; }
-  M().personas.push({ codigo, nombre, creado: Date.now() });
+  M().personas.push({ codigo, nombre, doc, creado: Date.now() });
   guardar();
   document.getElementById('inp-nombre').value = '';
+  document.getElementById('inp-doc').value = '';
   document.getElementById('inp-codigo').value = '';
   renderPersonas(); renderSelManual();
-  toast('✓ ' + nombre + ' agregada (' + codigo + ')');
+  toast('✓ ' + nombre + ' agregada (código ' + codigo + ')');
 }
 function eliminarPersona(codigo){
   const p = personaPorCodigo(codigo);
@@ -524,7 +534,7 @@ function renderPersonas(){
     fila.className = 'persona-item';
     const qrDiv = document.createElement('div'); qrDiv.className = 'qr-mini';
     const info = document.createElement('div'); info.className = 'info';
-    info.innerHTML = '<div class="n">'+p.nombre+'</div><div class="c">'+p.codigo+'</div>';
+    info.innerHTML = '<div class="n">'+p.nombre+'</div><div class="c">Cód: '+p.codigo+(p.doc ? ' · CC: '+p.doc : '')+'</div>';
     const cop = document.createElement('input');
     cop.type = 'number'; cop.min = '0'; cop.className = 'inp-copias'; cop.inputMode = 'numeric';
     cop.value = (p.copias==null ? 1 : p.copias);
@@ -535,7 +545,7 @@ function renderPersonas(){
     btn.onclick = ()=>eliminarPersona(p.codigo);
     fila.appendChild(qrDiv); fila.appendChild(info); fila.appendChild(cop); fila.appendChild(btn);
     cont.appendChild(fila);
-    new QRCode(qrDiv, { text: p.codigo, width: 52, height: 52, correctLevel: QRCode.CorrectLevel.M });
+    new QRCode(qrDiv, { text: qrTexto(p), width: 52, height: 52, correctLevel: QRCode.CorrectLevel.M });
   });
 }
 function importarExcel(ev){
@@ -550,12 +560,13 @@ function importarExcel(ev){
       let agregadas = 0, omitidas = 0;
       filas.forEach(fila=>{
         const nombre = String(fila[0]||'').trim();
-        let codigo = String(fila[1]||'').trim().toUpperCase();
+        const doc = String(fila[1]||'').trim();       // Columna B: cédula/documento
+        let codigo = String(fila[2]||'').trim().toUpperCase(); // Columna C: código (opcional)
         if(!nombre) return;
-        if(/^(nombre|persona)/i.test(nombre) && /^c(ó|o)digo/i.test(codigo)) return; // fila de encabezado
+        if(/^(nombre|persona)/i.test(nombre)) return; // fila de encabezado
         if(!codigo) codigo = siguienteCodigoNum();
         if(personaPorCodigo(codigo) || M().personas.some(p=>p.nombre.toLowerCase()===nombre.toLowerCase())){ omitidas++; return; }
-        M().personas.push({ codigo, nombre, creado: Date.now() });
+        M().personas.push({ codigo, nombre, doc, creado: Date.now() });
         agregadas++;
       });
       guardar(); renderPersonas(); renderSelManual();
@@ -610,19 +621,20 @@ function imprimirCarnets(){
       const c = document.createElement('div'); c.className = 'carnet';
       const qr = document.createElement('div'); qr.className = 'qr-print';
       c.appendChild(qr);
+      const ccTxt = 'Cód ' + p.codigo + (p.doc ? ' · ' + p.doc : '');
       if(rollo){
         const txt = document.createElement('div'); txt.className = 'txt-print';
         const n = document.createElement('div'); n.className='cn'; n.textContent = p.nombre; txt.appendChild(n);
-        const cc = document.createElement('div'); cc.className='cc'; cc.textContent = p.codigo; txt.appendChild(cc);
+        const cc = document.createElement('div'); cc.className='cc'; cc.textContent = ccTxt; txt.appendChild(cc);
         c.appendChild(txt);
         if(total % porPagina === 0){ pagina = document.createElement('div'); pagina.className = 'pagina-rollo'; hoja.appendChild(pagina); }
         pagina.appendChild(c);
       } else {
         const n = document.createElement('div'); n.className='cn'; n.textContent = p.nombre; c.appendChild(n);
-        const cc = document.createElement('div'); cc.className='cc'; cc.textContent = p.codigo; c.appendChild(cc);
+        const cc = document.createElement('div'); cc.className='cc'; cc.textContent = ccTxt; c.appendChild(cc);
         hoja.appendChild(c);
       }
-      new QRCode(qr, { text: p.codigo, width: 150, height: 150, correctLevel: QRCode.CorrectLevel.M });
+      new QRCode(qr, { text: qrTexto(p), width: 150, height: 150, correctLevel: QRCode.CorrectLevel.M });
       total++;
     }
   });
@@ -963,10 +975,11 @@ function exportarExcel(){
   const regs = M().registros;
   if(regs.length===0){ toast('No hay registros para exportar'); return; }
   const wb = XLSX.utils.book_new();
+  const docDe = {}; M().personas.forEach(p=>{ docDe[p.codigo] = p.doc||''; });
   // Hoja 1: registros detallados
   const detalle = regs.map(r=> esCorte
-    ? { 'Fecha': fmtFecha(r.ts), 'Hora': fmtHora(r.ts), 'Código': r.codigo, 'Persona': r.nombre, 'Ramos': r.ramos, 'Unidad': r.unidad, 'Tallos': r.tallos!=null ? r.tallos : '', 'Origen': r.origen }
-    : { 'Fecha': fmtFecha(r.ts), 'Hora': fmtHora(r.ts), 'Código': r.codigo, 'Persona': r.nombre, 'Bandejas': 1, 'Esquejes': r.esquejes, 'Origen': r.origen });
+    ? { 'Fecha': fmtFecha(r.ts), 'Hora': fmtHora(r.ts), 'Código': r.codigo, 'Cédula': docDe[r.codigo]||'', 'Persona': r.nombre, 'Ramos': r.ramos, 'Unidad': r.unidad, 'Tallos': r.tallos!=null ? r.tallos : '', 'Origen': r.origen }
+    : { 'Fecha': fmtFecha(r.ts), 'Hora': fmtHora(r.ts), 'Código': r.codigo, 'Cédula': docDe[r.codigo]||'', 'Persona': r.nombre, 'Bandejas': 1, 'Esquejes': r.esquejes, 'Origen': r.origen });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detalle), 'Registros');
   // Hoja 2: resumen por persona y día
   const res = {};
@@ -974,8 +987,8 @@ function exportarExcel(){
     const k = fmtFecha(r.ts) + '|' + r.codigo;
     if(!res[k]){
       res[k] = esCorte
-        ? { 'Fecha': fmtFecha(r.ts), 'Código': r.codigo, 'Persona': r.nombre, 'Escaneos': 0, 'Ramos': 0, 'Tallos': 0 }
-        : { 'Fecha': fmtFecha(r.ts), 'Código': r.codigo, 'Persona': r.nombre, 'Bandejas': 0, 'Esquejes': 0 };
+        ? { 'Fecha': fmtFecha(r.ts), 'Código': r.codigo, 'Cédula': docDe[r.codigo]||'', 'Persona': r.nombre, 'Escaneos': 0, 'Ramos': 0, 'Tallos': 0 }
+        : { 'Fecha': fmtFecha(r.ts), 'Código': r.codigo, 'Cédula': docDe[r.codigo]||'', 'Persona': r.nombre, 'Bandejas': 0, 'Esquejes': 0 };
     }
     if(esCorte){ res[k]['Escaneos']++; res[k]['Ramos'] += r.ramos; res[k]['Tallos'] += (r.tallos||0); }
     else { res[k]['Bandejas']++; res[k]['Esquejes'] += r.esquejes; }
