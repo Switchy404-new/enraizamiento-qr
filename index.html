@@ -139,7 +139,7 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
         <div class="lectora-txt" id="lectora-txt">Listo para leer con la lectora</div>
         <div class="lectora-sub" id="lectora-sub">Dispara la pistola sobre el QR. Se registra automáticamente.</div>
         <input id="scan-input" inputmode="none" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-          placeholder="Esperando lectura…" readonly>
+          placeholder="Esperando lectura…" oninput="scanEchoLive()" onkeydown="scanKey(event)" onblur="scanRefocus()">
         <div class="scan-diag" id="scan-diag"></div>
       </div>
       <div style="margin-top:10px;">
@@ -848,32 +848,47 @@ function focoScan(){
     sub.textContent = 'Dispara la pistola. Personas cargadas: ' + n + ' · con cédula: ' + conCed;
   }
 }
-function scanBlur(){}
-
-/* ===== Captura unificada de la lectora =====
-   Funciona con el campo enfocado o sin foco. Junta las teclas y registra
-   al recibir Enter (o tras una pausa, por si la lectora no manda Enter). */
-let scanBuf = '', scanTmr = null;
 function scanEcho(txt){ const d = document.getElementById('scan-diag'); if(d) d.textContent = txt; }
-function scanCommit(){
-  clearTimeout(scanTmr);
-  const cod = scanBuf.trim(); scanBuf = '';
-  const inp = document.getElementById('scan-input'); if(inp) inp.value = '';
-  if(cod.length >= 1){ scanEcho('Última lectura: ' + cod + ' (' + cod.length + ' dígitos)'); registrar(cod, 'pistola'); }
-  setTimeout(focoScan, 60);
-}
-document.addEventListener('keydown', (e)=>{
-  const ae = document.activeElement, tag = ae && ae.tagName, id = ae && ae.id;
-  // si el usuario está escribiendo en OTRO campo (nombre, cédula, ramos…), no capturar
-  if((tag==='INPUT' || tag==='SELECT' || tag==='TEXTAREA') && id !== 'scan-input') return;
-  if(!scanActivo()) return;
-  if(e.key === 'Enter' || e.key === 'Tab'){ e.preventDefault(); scanCommit(); return; }
-  if(e.key && e.key.length === 1){
+function scanEchoLive(){ const inp = document.getElementById('scan-input'); scanEcho('Recibiendo… ' + (inp ? inp.value : '')); }
+
+/* Registrar SOLO cuando llega el Enter (como la barra de Google). No se cierra por
+   tiempo, así los códigos largos entran completos sin importar la velocidad. */
+function scanKey(e){
+  if(e.key === 'Enter' || e.key === 'Tab'){
     e.preventDefault();
-    scanBuf += e.key;
-    scanEcho('Recibiendo… ' + scanBuf);
-    clearTimeout(scanTmr);
-    scanTmr = setTimeout(scanCommit, 150); // por si la lectora no manda Enter
+    const inp = document.getElementById('scan-input');
+    const cod = (inp.value || '').trim();
+    inp.value = '';
+    if(cod.length >= 1){ scanEcho('Última lectura: ' + cod + ' (' + cod.length + ' díg.)'); registrar(cod, 'pistola'); }
+    setTimeout(focoScan, 60);
+  }
+}
+function scanRefocus(){
+  // en celular la lectora solo llega si hay un campo enfocado: re-enfocar en reposo
+  setTimeout(()=>{
+    if(!scanActivo()) return;
+    const ae = document.activeElement, tag = ae && ae.tagName;
+    if(tag==='INPUT' || tag==='SELECT' || tag==='TEXTAREA') return; // el usuario tocó otro campo
+    const inp = document.getElementById('scan-input'); if(inp){ try{ inp.focus({preventScroll:true}); }catch(e){} }
+  }, 200);
+}
+
+/* Respaldo para PC: si NO hay ningún campo enfocado, junta las teclas y registra con Enter.
+   El temporizador solo LIMPIA el buffer (nunca registra a medias). */
+let gBuf = '', gTmr = null;
+document.addEventListener('keydown', (e)=>{
+  const ae = document.activeElement, tag = ae && ae.tagName;
+  if(tag==='INPUT' || tag==='SELECT' || tag==='TEXTAREA') return; // el campo enfocado se maneja solo
+  if(!scanActivo()) return;
+  if(e.key === 'Enter' || e.key === 'Tab'){
+    const cod = gBuf.trim(); gBuf = '';
+    if(cod.length >= 1){ scanEcho('Última lectura: ' + cod + ' (' + cod.length + ' díg.)'); registrar(cod, 'pistola'); setTimeout(focoScan, 60); }
+    return;
+  }
+  if(e.key && e.key.length === 1){
+    gBuf += e.key;
+    scanEcho('Recibiendo… ' + gBuf);
+    clearTimeout(gTmr); gTmr = setTimeout(()=>{ gBuf=''; }, 1500);
   }
 });
 
