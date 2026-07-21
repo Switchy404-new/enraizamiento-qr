@@ -103,10 +103,10 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
   /* Modo rollo: una fila de etiquetas por página; QR a la izquierda y texto a la derecha en cada etiqueta */
   #hoja-print.rollo{display:block!important; padding:0!important;}
   #hoja-print.rollo .pagina-rollo{display:flex; flex-direction:row; page-break-after:always; overflow:hidden;}
-  #hoja-print.rollo .carnet{flex-direction:row; gap:1.5mm; padding:1mm 1.5mm; page-break-after:auto;}
+  #hoja-print.rollo .carnet{flex-direction:row; gap:1mm; padding:0.5mm 1mm; page-break-after:auto;}
   #hoja-print.rollo .carnet .qr-print{flex-shrink:0;}
   #hoja-print.rollo .carnet .txt-print{text-align:left; overflow:hidden;}
-  #hoja-print.rollo .carnet .cn{word-break:break-word;}
+  #hoja-print.rollo .carnet .cn{word-break:break-word; line-height:1.05;}
 }
 @page{ margin:0; }
 </style>
@@ -270,6 +270,10 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
       <div><label>Tamaño del QR (% de la etiqueta)</label><input type="number" id="et-qr" min="30" max="90" inputmode="numeric"></div>
       <div class="solo-rollo"><label>Etiquetas por fila</label><input type="number" id="et-rcols" min="1" max="6" inputmode="numeric"></div>
       <div class="solo-rollo"><label>Ancho del papel/rollo (mm)</label><input type="number" id="et-rpapel" min="10" step="0.5" inputmode="decimal"></div>
+      <div class="solo-rollo"><label>Separación entre columnas (mm)</label><input type="number" id="et-rgh" min="0" step="0.5" inputmode="decimal"></div>
+      <div class="solo-rollo"><label>Separación entre filas (mm)</label><input type="number" id="et-rgv" min="0" step="0.5" inputmode="decimal"></div>
+      <div class="solo-rollo"><label>Margen superior (mm)</label><input type="number" id="et-rmt" min="0" step="0.5" inputmode="decimal"></div>
+      <div class="solo-rollo"><label>Margen izquierdo (mm)</label><input type="number" id="et-rml" min="0" step="0.5" inputmode="decimal"></div>
       <div class="solo-hoja"><label>Etiquetas por fila</label><input type="number" id="et-cols" min="1" inputmode="numeric"></div>
       <div class="solo-hoja"><label>Separación horizontal (mm)</label><input type="number" id="et-gh" min="0" step="0.5" inputmode="decimal"></div>
       <div class="solo-hoja"><label>Separación vertical (mm)</label><input type="number" id="et-gv" min="0" step="0.5" inputmode="decimal"></div>
@@ -332,8 +336,8 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
 /* ================= DATOS ================= */
 const LS = 'cultivo_v2';
 const LS_V1 = 'enraizamiento_v1';
-const ETIQ_DEF = { tipo: 'hoja', cols: 4, ancho: 30, alto: 25, gh: 3, gv: 3, mt: 5, ml: 5, qr: 62, rcols: 2, rpapel: 100 };
-const ROLLO_DEF = { rcols: 2, rpapel: 100 };
+const ETIQ_DEF = { tipo: 'hoja', cols: 4, ancho: 30, alto: 25, gh: 3, gv: 3, mt: 5, ml: 5, qr: 62, rcols: 1, rpapel: 100, rgh: 0, rgv: 3, rmt: 0, rml: 0 };
+const ROLLO_DEF = { rcols: 1, rpapel: 100, rgh: 0, rgv: 3, rmt: 0, rml: 0 };
 const MODS = { enr: 'Enraizamiento', cor: 'Corte' };
 
 let db = {
@@ -545,12 +549,15 @@ function imprimirCarnets(){
   if(!st){ st = document.createElement('style'); st.id = 'estilo-print'; document.head.appendChild(st); }
   const hoja = document.getElementById('hoja-print');
   if(rollo){
-    // Una fila de etiquetas por página. Cada etiqueta ancho×alto; el papel/rollo es más ancho para varias por fila.
+    // Una fila de etiquetas por página, del tamaño del "paso" real (alto de etiqueta + separación entre filas)
+    // para que cada QR caiga centrado en su sticker troquelado.
     const rcols = Math.max(1, Math.round(e.rcols||1));
-    const papel = Math.max(e.ancho * rcols, e.rpapel || e.ancho * rcols);
-    const fs = Math.max(6, Math.min(13, e.alto/2.4));
-    st.textContent = '@page{ size:'+papel+'mm '+e.alto+'mm; margin:0; }@media print{'+
-      '#hoja-print.rollo .pagina-rollo{width:'+papel+'mm; height:'+e.alto+'mm;}'+
+    const rgh = e.rgh||0, rgv = e.rgv||0, rmt = e.rmt||0, rml = e.rml||0;
+    const papel = Math.max(e.ancho * rcols + rgh * (rcols-1) + rml, e.rpapel || 0);
+    const pasoAlto = e.alto + rgv; // altura de página = paso de la etiqueta
+    const fs = Math.max(5.5, Math.min(12, e.alto/2.6));
+    st.textContent = '@page{ size:'+papel+'mm '+pasoAlto+'mm; margin:0; }@media print{'+
+      '#hoja-print.rollo .pagina-rollo{width:'+papel+'mm; height:'+pasoAlto+'mm; align-items:flex-start; padding:'+rmt+'mm 0 0 '+rml+'mm; column-gap:'+rgh+'mm;}'+
       '#hoja-print.rollo .carnet{width:'+e.ancho+'mm; height:'+e.alto+'mm;}'+
       '#hoja-print.rollo .carnet .qr-print img,#hoja-print.rollo .carnet .qr-print canvas{width:'+qrmm+'mm!important; height:'+qrmm+'mm!important;}'+
       '#hoja-print.rollo .carnet .cn{font-size:'+fs+'pt;}'+
@@ -925,6 +932,10 @@ function cargarConfigUI(){
   document.getElementById('et-cols').value = e.cols;
   document.getElementById('et-rcols').value = e.rcols || 2;
   document.getElementById('et-rpapel').value = e.rpapel || 100;
+  document.getElementById('et-rgh').value = e.rgh != null ? e.rgh : 2;
+  document.getElementById('et-rgv').value = e.rgv != null ? e.rgv : 2;
+  document.getElementById('et-rmt').value = e.rmt != null ? e.rmt : 1;
+  document.getElementById('et-rml').value = e.rml != null ? e.rml : 2;
   document.getElementById('et-qr').value = e.qr;
   document.getElementById('et-ancho').value = e.ancho;
   document.getElementById('et-alto').value = e.alto;
@@ -939,7 +950,7 @@ function toggleTipoImpresion(){
   document.querySelectorAll('.solo-hoja').forEach(el=>el.style.display = rollo ? 'none' : 'block');
   document.querySelectorAll('.solo-rollo').forEach(el=>el.style.display = rollo ? 'block' : 'none');
   document.getElementById('et-ayuda').innerHTML = rollo
-    ? 'Rollo/etiquetadora: se imprime <b>una fila de etiquetas por página</b>, con el QR a la izquierda y el nombre a la derecha en cada etiqueta. Pon el tamaño de <b>cada etiqueta</b> (ej: 50 × 27 mm), cuántas caben por fila (ej: 2) y el ancho total del papel/rollo (ej: 100 mm). En el diálogo de impresión elige tu etiquetadora, tamaño de papel = ancho del rollo × alto de etiqueta, y márgenes en Ninguno.'
+    ? 'Rollo/etiquetadora: mide con regla cada sticker y los espacios troquelados. Pon el tamaño de <b>cada etiqueta</b> (ej: 50 × 27 mm), cuántas por fila (ej: 2), el ancho del rollo (ej: 100 mm) y — muy importante — la <b>separación entre filas</b> (el espacio en blanco entre un sticker y el de abajo) para que no se vaya corriendo. Ajusta márgenes superior/izquierdo para centrar. En el diálogo de impresión: tu etiquetadora, papel = ancho del rollo × (alto + separación entre filas), márgenes en Ninguno. Prueba con 2-3 etiquetas antes de tirar todo el rollo.'
     : 'Hoja de stickers: se imprime en cuadrícula. Mide tus stickers con regla en milímetros. Haz una prueba en papel normal y ponla sobre la lámina a contraluz antes de usar los stickers.';
 }
 function guardarConfig(){
@@ -975,7 +986,11 @@ function guardarEtiquetas(){
     ml: num(g('et-ml'), ETIQ_DEF.ml),
     qr: Math.min(90, Math.max(30, num(g('et-qr'), ETIQ_DEF.qr))),
     rcols: Math.max(1, Math.round(num(g('et-rcols'), ETIQ_DEF.rcols))),
-    rpapel: Math.max(10, num(g('et-rpapel'), ETIQ_DEF.rpapel))
+    rpapel: Math.max(10, num(g('et-rpapel'), ETIQ_DEF.rpapel)),
+    rgh: num(g('et-rgh'), ETIQ_DEF.rgh),
+    rgv: num(g('et-rgv'), ETIQ_DEF.rgv),
+    rmt: num(g('et-rmt'), ETIQ_DEF.rmt),
+    rml: num(g('et-rml'), ETIQ_DEF.rml)
   };
   guardar(); cargarConfigUI();
   toast('✓ Ajustes de impresión guardados');
