@@ -100,9 +100,10 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
   .carnet .qr-print{line-height:0;}
   .carnet .cn{font-weight:700; line-height:1.1;}
   .carnet .cc{color:#000;}
-  /* Modo rollo: una etiqueta por página, QR a la izquierda y texto a la derecha */
+  /* Modo rollo: una fila de etiquetas por página; QR a la izquierda y texto a la derecha en cada etiqueta */
   #hoja-print.rollo{display:block!important; padding:0!important;}
-  #hoja-print.rollo .carnet{flex-direction:row; gap:2mm; padding:1mm 2mm; page-break-after:always;}
+  #hoja-print.rollo .pagina-rollo{display:flex; flex-direction:row; page-break-after:always; overflow:hidden;}
+  #hoja-print.rollo .carnet{flex-direction:row; gap:1.5mm; padding:1mm 1.5mm; page-break-after:auto;}
   #hoja-print.rollo .carnet .qr-print{flex-shrink:0;}
   #hoja-print.rollo .carnet .txt-print{text-align:left; overflow:hidden;}
   #hoja-print.rollo .carnet .cn{word-break:break-word;}
@@ -267,6 +268,8 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
       <div><label>Ancho de etiqueta (mm)</label><input type="number" id="et-ancho" min="10" step="0.5" inputmode="decimal"></div>
       <div><label>Alto de etiqueta (mm)</label><input type="number" id="et-alto" min="10" step="0.5" inputmode="decimal"></div>
       <div><label>Tamaño del QR (% de la etiqueta)</label><input type="number" id="et-qr" min="30" max="90" inputmode="numeric"></div>
+      <div class="solo-rollo"><label>Etiquetas por fila</label><input type="number" id="et-rcols" min="1" max="6" inputmode="numeric"></div>
+      <div class="solo-rollo"><label>Ancho del papel/rollo (mm)</label><input type="number" id="et-rpapel" min="10" step="0.5" inputmode="decimal"></div>
       <div class="solo-hoja"><label>Etiquetas por fila</label><input type="number" id="et-cols" min="1" inputmode="numeric"></div>
       <div class="solo-hoja"><label>Separación horizontal (mm)</label><input type="number" id="et-gh" min="0" step="0.5" inputmode="decimal"></div>
       <div class="solo-hoja"><label>Separación vertical (mm)</label><input type="number" id="et-gv" min="0" step="0.5" inputmode="decimal"></div>
@@ -329,8 +332,8 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
 /* ================= DATOS ================= */
 const LS = 'cultivo_v2';
 const LS_V1 = 'enraizamiento_v1';
-const ETIQ_DEF = { tipo: 'hoja', cols: 4, ancho: 30, alto: 25, gh: 3, gv: 3, mt: 5, ml: 5, qr: 62 };
-const ROLLO_DEF = { ancho: 100, alto: 27, qr: 80 };
+const ETIQ_DEF = { tipo: 'hoja', cols: 4, ancho: 30, alto: 25, gh: 3, gv: 3, mt: 5, ml: 5, qr: 62, rcols: 2, rpapel: 100 };
+const ROLLO_DEF = { rcols: 2, rpapel: 100 };
 const MODS = { enr: 'Enraizamiento', cor: 'Corte' };
 
 let db = {
@@ -542,9 +545,12 @@ function imprimirCarnets(){
   if(!st){ st = document.createElement('style'); st.id = 'estilo-print'; document.head.appendChild(st); }
   const hoja = document.getElementById('hoja-print');
   if(rollo){
-    // Una etiqueta por página, tamaño exacto del rollo. QR a la izquierda, nombre y código a la derecha.
+    // Una fila de etiquetas por página. Cada etiqueta ancho×alto; el papel/rollo es más ancho para varias por fila.
+    const rcols = Math.max(1, Math.round(e.rcols||1));
+    const papel = Math.max(e.ancho * rcols, e.rpapel || e.ancho * rcols);
     const fs = Math.max(6, Math.min(13, e.alto/2.4));
-    st.textContent = '@page{ size:'+e.ancho+'mm '+e.alto+'mm; margin:0; }@media print{'+
+    st.textContent = '@page{ size:'+papel+'mm '+e.alto+'mm; margin:0; }@media print{'+
+      '#hoja-print.rollo .pagina-rollo{width:'+papel+'mm; height:'+e.alto+'mm;}'+
       '#hoja-print.rollo .carnet{width:'+e.ancho+'mm; height:'+e.alto+'mm;}'+
       '#hoja-print.rollo .carnet .qr-print img,#hoja-print.rollo .carnet .qr-print canvas{width:'+qrmm+'mm!important; height:'+qrmm+'mm!important;}'+
       '#hoja-print.rollo .carnet .cn{font-size:'+fs+'pt;}'+
@@ -563,7 +569,8 @@ function imprimirCarnets(){
     hoja.className = '';
   }
   hoja.innerHTML = '';
-  let total = 0;
+  const rcols = rollo ? Math.max(1, Math.round(e.rcols||1)) : 1;
+  let total = 0, pagina = null;
   M().personas.forEach(p=>{
     const copias = p.copias==null ? 1 : p.copias;
     for(let i=0; i<copias; i++){
@@ -575,11 +582,13 @@ function imprimirCarnets(){
         const n = document.createElement('div'); n.className='cn'; n.textContent = p.nombre; txt.appendChild(n);
         const cc = document.createElement('div'); cc.className='cc'; cc.textContent = p.codigo; txt.appendChild(cc);
         c.appendChild(txt);
+        if(total % rcols === 0){ pagina = document.createElement('div'); pagina.className = 'pagina-rollo'; hoja.appendChild(pagina); }
+        pagina.appendChild(c);
       } else {
         const n = document.createElement('div'); n.className='cn'; n.textContent = p.nombre; c.appendChild(n);
         const cc = document.createElement('div'); cc.className='cc'; cc.textContent = p.codigo; c.appendChild(cc);
+        hoja.appendChild(c);
       }
-      hoja.appendChild(c);
       new QRCode(qr, { text: p.codigo, width: 150, height: 150, correctLevel: QRCode.CorrectLevel.M });
       total++;
     }
@@ -914,6 +923,8 @@ function cargarConfigUI(){
   const e = db.etiq;
   document.getElementById('et-tipo').value = e.tipo || 'hoja';
   document.getElementById('et-cols').value = e.cols;
+  document.getElementById('et-rcols').value = e.rcols || 2;
+  document.getElementById('et-rpapel').value = e.rpapel || 100;
   document.getElementById('et-qr').value = e.qr;
   document.getElementById('et-ancho').value = e.ancho;
   document.getElementById('et-alto').value = e.alto;
@@ -926,8 +937,9 @@ function cargarConfigUI(){
 function toggleTipoImpresion(){
   const rollo = document.getElementById('et-tipo').value === 'rollo';
   document.querySelectorAll('.solo-hoja').forEach(el=>el.style.display = rollo ? 'none' : 'block');
+  document.querySelectorAll('.solo-rollo').forEach(el=>el.style.display = rollo ? 'block' : 'none');
   document.getElementById('et-ayuda').innerHTML = rollo
-    ? 'Rollo/etiquetadora: se imprime <b>una etiqueta por página</b>, con el QR a la izquierda y el nombre a la derecha. Pon el ancho y alto exactos de tu etiqueta (ej: 100 × 27 mm). En el diálogo de impresión elige tu etiquetadora, tamaño de papel igual a la etiqueta y márgenes en Ninguno.'
+    ? 'Rollo/etiquetadora: se imprime <b>una fila de etiquetas por página</b>, con el QR a la izquierda y el nombre a la derecha en cada etiqueta. Pon el tamaño de <b>cada etiqueta</b> (ej: 50 × 27 mm), cuántas caben por fila (ej: 2) y el ancho total del papel/rollo (ej: 100 mm). En el diálogo de impresión elige tu etiquetadora, tamaño de papel = ancho del rollo × alto de etiqueta, y márgenes en Ninguno.'
     : 'Hoja de stickers: se imprime en cuadrícula. Mide tus stickers con regla en milímetros. Haz una prueba en papel normal y ponla sobre la lámina a contraluz antes de usar los stickers.';
 }
 function guardarConfig(){
@@ -961,7 +973,9 @@ function guardarEtiquetas(){
     gv: num(g('et-gv'), ETIQ_DEF.gv),
     mt: num(g('et-mt'), ETIQ_DEF.mt),
     ml: num(g('et-ml'), ETIQ_DEF.ml),
-    qr: Math.min(90, Math.max(30, num(g('et-qr'), ETIQ_DEF.qr)))
+    qr: Math.min(90, Math.max(30, num(g('et-qr'), ETIQ_DEF.qr))),
+    rcols: Math.max(1, Math.round(num(g('et-rcols'), ETIQ_DEF.rcols))),
+    rpapel: Math.max(10, num(g('et-rpapel'), ETIQ_DEF.rpapel))
   };
   guardar(); cargarConfigUI();
   toast('✓ Ajustes de impresión guardados');
