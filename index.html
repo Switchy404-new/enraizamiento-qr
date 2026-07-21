@@ -138,8 +138,8 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
         <div class="lectora-pulso" id="lectora-pulso"></div>
         <div class="lectora-txt" id="lectora-txt">Listo para leer con la lectora</div>
         <div class="lectora-sub" id="lectora-sub">Dispara la pistola sobre el QR. Se registra automáticamente.</div>
-        <input id="scan-input" inputmode="none" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-          placeholder="Esperando lectura…" oninput="scanEchoLive()" onkeydown="scanKey(event)" onblur="scanRefocus()">
+        <input id="scan-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+          placeholder="Esperando lectura…" oninput="scanEchoLive()" onkeydown="scanKey(event)" onchange="scanChange()" onblur="scanRefocus()">
         <div class="scan-diag" id="scan-diag"></div>
       </div>
       <div style="margin-top:10px;">
@@ -862,6 +862,14 @@ function scanKey(e){
     if(cod.length >= 1){ scanEcho('Última lectura: ' + cod + ' (' + cod.length + ' díg.)'); registrar(cod, 'pistola'); }
     setTimeout(focoScan, 60);
   }
+}
+function scanChange(){
+  // respaldo: algunos teclados confirman con "change" en vez de keydown Enter
+  const inp = document.getElementById('scan-input');
+  const cod = (inp.value || '').trim();
+  inp.value = '';
+  if(cod.length >= 1){ scanEcho('Última lectura: ' + cod + ' (' + cod.length + ' díg.)'); registrar(cod, 'pistola'); }
+  setTimeout(focoScan, 60);
 }
 function scanRefocus(){
   // en celular la lectora solo llega si hay un campo enfocado: re-enfocar en reposo
