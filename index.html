@@ -296,6 +296,24 @@ td{padding:7px 4px; border-bottom:1px solid #f0f0f0;}
     </div>
   </div>
   <div class="card">
+    <h2>Google Sheets (hora-hora)</h2>
+    <div style="font-size:12px; color:var(--texto2);">Envía los registros a tu hoja de Google vía Apps Script. Sigue la guía "GoogleSheets_AppsScript" para obtener la URL.</div>
+    <label>URL del Web App (termina en /exec)</label>
+    <input type="text" id="cfg-sheets-url" placeholder="https://script.google.com/macros/s/…/exec">
+    <label style="display:flex; align-items:center; gap:8px; margin-top:12px; cursor:pointer;">
+      <input type="checkbox" id="cfg-sheets-auto" style="width:auto;">
+      <span>Enviar automáticamente al escanear</span>
+    </label>
+    <div style="margin-top:12px;">
+      <button class="btn-p" onclick="guardarSheets()">💾 Guardar conexión</button>
+    </div>
+    <div class="fila-botones">
+      <button class="btn-s" onclick="enviarPendientes()">📤 Enviar pendientes (<span id="sheets-pend">0</span>)</button>
+      <button class="btn-s" onclick="reenviarTodo()">↻ Reenviar todo</button>
+    </div>
+    <div id="sheets-estado" style="font-size:12px; color:var(--texto2); margin-top:8px;"></div>
+  </div>
+  <div class="card">
     <h2>Respaldo de datos</h2>
     <div style="font-size:13px; color:var(--texto2); margin-bottom:10px;">Los datos de ambos módulos se guardan en este teléfono. Descarga un respaldo con frecuencia.</div>
     <div class="fila-botones">
@@ -367,6 +385,8 @@ let db = {
   mod: 'enr',
   finca: '',
   etiq: Object.assign({}, ETIQ_DEF),
+  sheetsUrl: '',
+  sheetsAuto: false,
   enr: { personas: [], registros: [], config: { esquejes: 50, cooldown: 5 } },
   cor: { personas: [], registros: [], config: { cooldown: 5, unidades: ['Malla', 'Canastilla', 'Carro'] } }
 };
@@ -399,6 +419,7 @@ function cargar(){
       const d = JSON.parse(raw);
       db.mod = d.mod||'enr'; db.finca = d.finca||'';
       db.etiq = Object.assign({}, ETIQ_DEF, d.etiq||{});
+      db.sheetsUrl = d.sheetsUrl||''; db.sheetsAuto = !!d.sheetsAuto;
       ['enr','cor'].forEach(m=>{ if(d[m]) db[m] = d[m]; });
     } else {
       // migración desde la versión anterior (solo enraizamiento)
@@ -675,8 +696,10 @@ function registrarEnr(codigo, origen){
   marcarScan(codigo);
   const ahora = Date.now();
   const esq = db.enr.config.esquejes;
-  db.enr.registros.push({ ts: ahora, codigo: p.codigo, nombre: p.nombre, esquejes: esq, origen: origen||'qr' });
+  const nuevo = { ts: ahora, codigo: p.codigo, nombre: p.nombre, esquejes: esq, origen: origen||'qr' };
+  db.enr.registros.push(nuevo);
   guardar();
+  autoEnviar('enr', nuevo); actualizarPendientes();
   const hoyIni = inicioDia(ahora);
   const hoy = db.enr.registros.filter(r=>r.codigo===p.codigo && r.ts>=hoyIni);
   const res = document.getElementById('res-scan');
@@ -732,9 +755,11 @@ function confirmarCorte(){
   marcarScan(p.codigo);
   const tpu = tallosDeUnidad(unidad);
   const tallos = tpu ? ramos * tpu : null;
-  db.cor.registros.push({ ts: ahora, codigo: p.codigo, nombre: p.nombre, ramos: ramos, unidad: unidad, tallos: tallos, origen: pendienteCorte.origen });
+  const nuevo = { ts: ahora, codigo: p.codigo, nombre: p.nombre, ramos: ramos, unidad: unidad, tallos: tallos, origen: pendienteCorte.origen };
+  db.cor.registros.push(nuevo);
   db.cor.config.ultimaUnidad = unidad;
   guardar();
+  autoEnviar('cor', nuevo); actualizarPendientes();
   cerrarModal();
   const hoyIni = inicioDia(ahora);
   const hoy = db.cor.registros.filter(r=>r.codigo===p.codigo && r.ts>=hoyIni);
@@ -1003,6 +1028,85 @@ function exportarExcel(){
   XLSX.writeFile(wb, nombre);
   toast('✓ Excel descargado');
 }
+
+/* ================= GOOGLE SHEETS ================= */
+function docDePersona(mod, codigo){
+  const p = db[mod].personas.find(x=>x.codigo===codigo);
+  return p && p.doc ? String(p.doc).trim() : '';
+}
+function registroPayload(mod, r){
+  const d = new Date(r.ts);
+  const esCorte = mod==='cor';
+  return {
+    id: mod + '_' + r.ts + '_' + r.codigo,
+    fecha: fmtFecha(r.ts),
+    hora: fmtHora(r.ts),
+    horaDia: d.getHours(),
+    modulo: MODS[mod],
+    codigo: r.codigo,
+    cedula: docDePersona(mod, r.codigo),
+    persona: r.nombre,
+    cantidad: esCorte ? r.ramos : 1,
+    unidad: esCorte ? (r.unidad||'') : 'Bandeja',
+    produccion: esCorte ? (r.tallos||'') : r.esquejes,
+    origen: r.origen || ''
+  };
+}
+function pendientes(){
+  const lista = [];
+  ['enr','cor'].forEach(mod=>{
+    db[mod].registros.forEach(r=>{ if(!r.sent) lista.push({mod, r}); });
+  });
+  return lista;
+}
+function actualizarPendientes(){
+  const n = pendientes().length;
+  const el = document.getElementById('sheets-pend'); if(el) el.textContent = n;
+}
+async function enviarASheets(lista, silencioso){
+  if(!db.sheetsUrl){ if(!silencioso) toast('Primero pega la URL del Web App'); return false; }
+  if(lista.length===0){ if(!silencioso) toast('No hay registros pendientes'); return true; }
+  const payload = { registros: lista.map(x=>registroPayload(x.mod, x.r)) };
+  try{
+    await fetch(db.sheetsUrl, { method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(payload) });
+    lista.forEach(x=>{ x.r.sent = true; });
+    guardar();
+    actualizarPendientes();
+    const est = document.getElementById('sheets-estado');
+    if(est && !silencioso) est.textContent = '✓ ' + lista.length + ' registro(s) enviado(s) · ' + new Date().toLocaleTimeString('es-CO');
+    return true;
+  }catch(e){
+    const est = document.getElementById('sheets-estado');
+    if(est && !silencioso) est.textContent = '⚠️ Sin conexión. Quedan pendientes; reintenta con «Enviar pendientes».';
+    return false;
+  }
+}
+function enviarPendientes(){
+  const lista = pendientes();
+  if(lista.length===0){ toast('Todo está enviado'); return; }
+  toast('Enviando ' + lista.length + '…');
+  enviarASheets(lista, false);
+}
+function reenviarTodo(){
+  if(!confirm('¿Reenviar TODOS los registros a Google Sheets? No se duplican (el Apps Script ignora repetidos).')) return;
+  const lista = [];
+  ['enr','cor'].forEach(mod=>{ db[mod].registros.forEach(r=>lista.push({mod, r})); });
+  toast('Reenviando ' + lista.length + '…');
+  enviarASheets(lista, false);
+}
+function autoEnviar(mod, r){
+  if(db.sheetsAuto && db.sheetsUrl){ enviarASheets([{mod, r}], true); }
+}
+function guardarSheets(){
+  let url = document.getElementById('cfg-sheets-url').value.trim();
+  db.sheetsUrl = url;
+  db.sheetsAuto = document.getElementById('cfg-sheets-auto').checked;
+  guardar();
+  const est = document.getElementById('sheets-estado');
+  if(url && !/\/exec$/.test(url)) { if(est) est.textContent = '⚠️ La URL debería terminar en /exec. Revisa que copiaste la de «Aplicación web».'; }
+  else if(est){ est.textContent = '✓ Conexión guardada.'; }
+  toast('✓ Conexión guardada');
+}
 function exportarRespaldo(){
   const blob = new Blob([JSON.stringify(db)], {type:'application/json'});
   const a = document.createElement('a');
@@ -1022,6 +1126,7 @@ function importarRespaldo(ev){
         // respaldo v2
         db.mod = d.mod||'enr'; db.finca = d.finca||'';
         db.etiq = Object.assign({}, ETIQ_DEF, d.etiq||{});
+        db.sheetsUrl = d.sheetsUrl||''; db.sheetsAuto = !!d.sheetsAuto;
         if(d.enr) db.enr = d.enr;
         if(d.cor) db.cor = d.cor;
       } else if(d.personas && d.registros){
@@ -1079,6 +1184,9 @@ function cargarConfigUI(){
   document.getElementById('et-mt').value = e.mt;
   document.getElementById('et-ml').value = e.ml;
   toggleTipoImpresion();
+  document.getElementById('cfg-sheets-url').value = db.sheetsUrl || '';
+  document.getElementById('cfg-sheets-auto').checked = !!db.sheetsAuto;
+  actualizarPendientes();
 }
 function toggleTipoImpresion(){
   const rollo = document.getElementById('et-tipo').value === 'rollo';
