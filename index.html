@@ -380,12 +380,13 @@ const LS_V1 = 'enraizamiento_v1';
 const ETIQ_DEF = { tipo: 'hoja', qrcontent: 'cedula', cols: 4, ancho: 30, alto: 25, gh: 3, gv: 3, mt: 5, ml: 5, qr: 62, rcols: 2, rrows: 7, rpapel: 203, rgh: 3, rgv: 3, rmt: 0, rml: 0 };
 const ROLLO_DEF = { rcols: 2, rrows: 7, rpapel: 203, rgh: 3, rgv: 3, rmt: 0, rml: 0 };
 const MODS = { enr: 'Enraizamiento', cor: 'Corte' };
+const SHEETS_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbx_QESBoFTJBibn4ovm59IbAo2e_tuvUEDI_nqytxAx4PPGvqSyasVRdJ48MtcpmfnI8A/exec';
 
 let db = {
   mod: 'enr',
   finca: '',
   etiq: Object.assign({}, ETIQ_DEF),
-  sheetsUrl: '',
+  sheetsUrl: SHEETS_URL_DEFAULT,
   sheetsAuto: false,
   enr: { personas: [], registros: [], config: { esquejes: 50, cooldown: 5 } },
   cor: { personas: [], registros: [], config: { cooldown: 5, unidades: ['Malla', 'Canastilla', 'Carro'] } }
@@ -395,6 +396,7 @@ function M(){ return db[db.mod]; }
 
 function normalizar(){
   if(!MODS[db.mod]) db.mod = 'enr';
+  if(!db.sheetsUrl) db.sheetsUrl = SHEETS_URL_DEFAULT;
   db.etiq = Object.assign({}, ETIQ_DEF, db.etiq||{});
   if(!db.enr) db.enr = { personas:[], registros:[], config:{} };
   if(!db.cor) db.cor = { personas:[], registros:[], config:{} };
